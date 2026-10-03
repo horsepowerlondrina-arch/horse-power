@@ -21,7 +21,8 @@ A planilha de gastos continua como planejamento: não foram inventados meses de 
 
 - `DATABASE_URL`: segredo do servidor com usuário restrito e transaction pooler porta 6543. TLS verifica o certificado público do Supabase, incluído em `server/db/certs`.
 - `FIPEPLACA_TOKENS_JSON`: segredo do servidor já utilizado pela oficina; nenhuma consulta paga faz parte dos testes.
-- `APP_ORIGIN` e `PUBLIC_ORIGIN`: domínio oficial, ou domínio de produção fornecido pela Vercel.
+- `APP_ORIGIN`: domínio principal de produção; `APP_ORIGINS`: lista explícita dos domínios autorizados para operações autenticadas.
+- `PUBLIC_ORIGIN`: fixado em `https://horse-power.vercel.app` no `vercel.json` para preservar o caminho `/p/<token>` dos orçamentos. O domínio próprio ainda usa encaminhamento HTTP no registrador, que remove o caminho. Só alterar o endereço público após apontar o DNS diretamente para a Vercel, validar HTTPS e testar um link público sem login. Links antigos podem ser recuperados trocando apenas a origem, mantendo o token, desde que estejam ativos.
 - `.env.production.local`, `data/` e temporários Supabase são ignorados por Git e Vercel.
 - A publicação da Vercel usa Node 24 e a região próxima do banco. O frontend utiliza `/api` na mesma origem, cookies HttpOnly e Secure em produção.
 
