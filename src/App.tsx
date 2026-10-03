@@ -1,3 +1,4 @@
+import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Expenses, FinanceNav } from "./pages/Expenses";
 import { useEffect, useState } from "react";
@@ -11,6 +12,7 @@ import {
 } from "react-router-dom";
 import {
   LayoutDashboard,
+  LayoutGrid,
   ClipboardList,
   FileText,
   Users,
@@ -128,7 +130,7 @@ export function App() {
         </button>
       </div>
     );
-  if (!session) return <Login onLogin={load} />;
+  if (!session) return <Login onLogin={async () => { await load(); navigate("/inicio"); }} />;
   if (!data) return null;
   const groups: {
     title: string;
@@ -172,7 +174,7 @@ export function App() {
     groups
       .flatMap((g) => g.items)
       .find(([path]) => location.pathname.startsWith(path))?.[1] ||
-    (location.pathname === "/configuracoes" ? "Configurações" : "Atendimento");
+    (location.pathname === "/inicio" ? "Início" : location.pathname === "/configuracoes" ? "Configurações" : "Atendimento");
   const active = data.orders.filter((o) =>
     ["open", "working", "ready", "awaiting_payment"].includes(
       o.display_status || o.status,
@@ -258,20 +260,18 @@ export function App() {
           />
         )}
         <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
-          <NavLink className="brand" to="/dashboard">
+          <NavLink className="brand" to="/inicio">
             <img
               className="official-logo"
               src="/brand/horse-power.jpg"
               alt="Horse Power Car Service"
             />
           </NavLink>
-          <div className="workspace-switcher">
-            <img src="/brand/icon.jpg" className="workshop-avatar" alt="" />
-            <div>
-              <span>SUA OFICINA</span>
-              <strong>{session.tenant.name}</strong>
-            </div>
-          </div>
+          <NavLink to="/inicio" className={({ isActive }) => `home-nav ${isActive ? "active" : ""}`}>
+            <LayoutGrid size={21} aria-hidden="true" />
+            <span>Início<small>Explore as áreas do sistema</small></span>
+            <ArrowRight size={16} aria-hidden="true" />
+          </NavLink>
           <nav>
             {visibleGroups.map((group) => (
               <div className="nav-group" key={group.title}>
@@ -369,12 +369,13 @@ export function App() {
             </div>
           </header>
           <main className="page-content">
-            {!admin && !/^\/ordens(?:\/[^/]+)?$/.test(location.pathname) ? (
+            {!admin && location.pathname !== "/inicio" && !/^\/ordens(?:\/[^/]+)?$/.test(location.pathname) ? (
               <Navigate to="/ordens" replace />
             ) : !admin && location.pathname === "/ordens/nova" ? (
               <Navigate to="/ordens" replace />
             ) : (
               <Routes>
+                <Route path="/inicio" element={<Home />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/ordens" element={<Orders />} />
                 <Route path="/orcamentos" element={<Orders quotes />} />
@@ -420,7 +421,7 @@ export function App() {
                 <Route path="/configuracoes" element={<SettingsPage />} />
                 <Route
                   path="/"
-                  element={<Navigate to="/dashboard" replace />}
+                  element={<Navigate to="/inicio" replace />}
                 />
                 <Route
                   path="*"

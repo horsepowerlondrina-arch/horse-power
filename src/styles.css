@@ -3497,3 +3497,38 @@ body {
     height: 210px;
   }
 }
+
+.home-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 11px;
+  margin: 12px 1px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: #30333b;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.home-nav > span { flex: 1; font-size: 13px; font-weight: 650; }
+.home-nav small { display: block; font-size: 10px; font-weight: 400; color: #737983; margin-top: 4px; }
+.home-nav:hover, .home-nav.active { background: #fff5f5; border-color: #edc8cb; color: var(--red); }
+.module-home { max-width: 1240px; margin: 0 auto; }
+.module-home-heading { padding: 8px 0 28px; }
+.module-home-heading > span { font-size: 10px; letter-spacing: 2px; color: var(--red); font-weight: 700; }
+.module-home-heading h1 { margin: 12px 0 8px; font-size: clamp(25px, 3vw, 34px); letter-spacing: -1px; }
+.module-home-heading p { margin: 0; color: #727781; font-size: 14px; }
+.module-section { margin-bottom: 28px; }
+.module-section > h2 { font-size: 12px; font-weight: 650; color: #737983; margin: 0 0 12px; }
+.module-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.module-card { display: block; padding: 21px; border: 1px solid var(--border); border-radius: 14px; background: #fff; color: #252830; text-decoration: none; transition: border-color .15s, box-shadow .15s; }
+.module-card:hover { border-color: #dca0a5; box-shadow: 0 5px 18px #28111408; }
+.module-card:focus-visible, .home-nav:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
+.module-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 17px; }
+.module-icon { display: grid; place-items: center; width: 45px; height: 45px; border-radius: 12px; color: var(--red); background: #fcf0f1; }
+.module-arrow { color: #9ba0a9; }
+.module-card:hover .module-arrow { color: var(--red); }
+.module-card h3 { font-size: 15px; margin: 0 0 7px; }
+.module-card p { font-size: 12px; color: #757b85; line-height: 1.6; margin: 0; max-width: 280px; }
+@media (max-width: 1100px) { .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .module-grid { grid-template-columns: 1fr; } .module-card { padding: 18px; } }
