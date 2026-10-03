@@ -293,10 +293,6 @@ export function App() {
             ))}
           </nav>
           <div className="sidebar-bottom">
-            <div className="foundation-note">
-              <span className="tiny-dot red" /> Seu próximo nível começa aqui.
-              <span>Uma oficina mais organizada.</span>
-            </div>
             {admin && (
               <NavLink
                 to="/configuracoes"

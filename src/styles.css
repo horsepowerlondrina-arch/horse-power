@@ -294,23 +294,6 @@ button:hover:not(:disabled) {
 .sidebar-bottom {
   margin-top: auto;
 }
-.foundation-note {
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 14px 10px;
-  margin: 18px 0;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.6;
-  white-space: nowrap;
-}
-.foundation-note > span:last-child {
-  display: block;
-  color: #9399a2;
-  font-size: 10px;
-  font-weight: 400;
-  margin-left: 13px;
-}
 .tiny-dot {
   display: inline-block;
   width: 6px;
