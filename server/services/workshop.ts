@@ -5,13 +5,13 @@ import { assertTransition, totalOf, type Status } from "../domain/orders";
 import { configurePlan, settleInstallment, requireAdmin } from "./payments";
 export const id = () => randomUUID();
 export type Row = Record<string, any>;
-export function scoped(
+export async function scoped(
   db: DB,
   table: string,
   tenant: string,
   record: string,
-): Row {
-  const row = db
+): Promise<Row> {
+  const row = await db
     .prepare(`SELECT * FROM ${table} WHERE tenant_id=? AND id=?`)
     .get(tenant, record);
   if (!row)
@@ -20,13 +20,20 @@ export function scoped(
     });
   return row;
 }
-export function audit(db: DB, ctx: Context, action: string, entity: string) {
-  db.prepare(
-    "INSERT INTO audit_events(id,tenant_id,user_id,action,entity_id) VALUES(?,?,?,?,?)",
-  ).run(id(), ctx.tenantId, ctx.userId, action, entity);
+export async function audit(
+  db: DB,
+  ctx: Context,
+  action: string,
+  entity: string,
+) {
+  await db
+    .prepare(
+      "INSERT INTO audit_events(id,tenant_id,user_id,action,entity_id) VALUES(?,?,?,?,?)",
+    )
+    .run(id(), ctx.tenantId, ctx.userId, action, entity);
 }
-export function listOrders(db: DB, tenant: string): Row[] {
-  const rows = db
+export async function listOrders(db: DB, tenant: string): Promise<Row[]> {
+  const rows = await db
     .prepare(
       `SELECT o.*,COALESCE(c.name,NULLIF(o.guest_name,''),'Cliente não informado') customer_name,
  COALESCE(v.plate,o.guest_plate) plate,COALESCE(v.brand,'') brand,COALESCE(v.model,o.guest_vehicle) model,
@@ -38,19 +45,30 @@ export function listOrders(db: DB, tenant: string): Row[] {
  WHERE o.tenant_id=? ORDER BY o.number DESC`,
     )
     .all(tenant);
-  return rows.map((o) => ({
-    ...o,
-    items: db
-      .prepare(
-        "SELECT i.*,p.name professional_name FROM order_items i LEFT JOIN professionals p ON p.id=i.professional_id AND p.tenant_id=i.tenant_id WHERE i.tenant_id=? AND order_id=?",
-      )
-      .all(tenant, o.id),
-  }));
+  const items = await db
+    .prepare(
+      "SELECT i.*,p.name professional_name FROM order_items i LEFT JOIN professionals p ON p.id=i.professional_id AND p.tenant_id=i.tenant_id WHERE i.tenant_id=?",
+    )
+    .all(tenant);
+  const byOrder = new Map<string, Row[]>();
+  for (const item of items) {
+    const group = byOrder.get(item.order_id) || [];
+    group.push(item);
+    byOrder.set(item.order_id, group);
+  }
+  return rows.map((o) => ({ ...o, items: byOrder.get(o.id) || [] }));
 }
-export function saveOrder(db: DB, ctx: Context, input: Row, record?: string) {
+export async function saveOrder(
+  db: DB,
+  ctx: Context,
+  input: Row,
+  record?: string,
+) {
   requireAdmin(ctx);
-  return transaction(db, () => {
-    const old = record ? scoped(db, "orders", ctx.tenantId, record) : null;
+  return await transaction(db, async () => {
+    const old = record
+      ? await scoped(db, "orders", ctx.tenantId, record)
+      : null;
     if (old && ["completed", "cancelled"].includes(old.status))
       throw new Error(
         "Ordens finalizadas ou canceladas não podem ser editadas.",
@@ -61,10 +79,10 @@ export function saveOrder(db: DB, ctx: Context, input: Row, record?: string) {
     if (kind === "order" && (!customerId || !vehicleId))
       throw new Error("Selecione o cliente e o veículo para a OS.");
     const customer = customerId
-      ? scoped(db, "customers", ctx.tenantId, customerId)
+      ? await scoped(db, "customers", ctx.tenantId, customerId)
       : null;
     const vehicle = vehicleId
-      ? scoped(db, "vehicles", ctx.tenantId, vehicleId)
+      ? await scoped(db, "vehicles", ctx.tenantId, vehicleId)
       : null;
     if ((customer && !customer.active) || (vehicle && !vehicle.active))
       throw new Error("Escolha cliente e veículo ativos.");
@@ -73,30 +91,44 @@ export function saveOrder(db: DB, ctx: Context, input: Row, record?: string) {
     if (input.due_on < input.entered_on)
       throw new Error("A previsão não pode ser anterior à entrada.");
     const previous = old
-      ? db
+      ? await db
           .prepare("SELECT * FROM order_items WHERE tenant_id=? AND order_id=?")
           .all(ctx.tenantId, record!)
       : [];
-    const items = input.items.map((item: Row) => {
-      const catalog = scoped(db, "catalog", ctx.tenantId, item.catalog_id);
-      if (!catalog.active) throw new Error("Um dos itens está inativo.");
-      if (
-        item.professional_id &&
-        !scoped(db, "professionals", ctx.tenantId, item.professional_id).active
-      )
-        throw new Error("Profissional inativo.");
-      const prior = previous.find(
-        (p) => p.id === item.id && p.catalog_id === item.catalog_id,
-      );
-      return {
-        ...item,
-        snapshotId: prior?.id || id(),
-        kind: catalog.kind,
-        name: prior?.name || catalog.name,
-        cost: prior?.cost ?? catalog.cost,
-        professional_id: item.professional_id || null,
-      };
-    });
+    const items = await Promise.all(
+      input.items.map(async (item: Row) => {
+        const catalog = await scoped(
+          db,
+          "catalog",
+          ctx.tenantId,
+          item.catalog_id,
+        );
+        if (!catalog.active) throw new Error("Um dos itens está inativo.");
+        if (
+          item.professional_id &&
+          !(
+            await scoped(
+              db,
+              "professionals",
+              ctx.tenantId,
+              item.professional_id,
+            )
+          ).active
+        )
+          throw new Error("Profissional inativo.");
+        const prior = previous.find(
+          (p) => p.id === item.id && p.catalog_id === item.catalog_id,
+        );
+        return {
+          ...item,
+          snapshotId: prior?.id || id(),
+          kind: catalog.kind,
+          name: prior?.name || catalog.name,
+          cost: prior?.cost ?? catalog.cost,
+          professional_id: item.professional_id || null,
+        };
+      }),
+    );
     const total = totalOf(items, input.discount);
     const orderId = record || id();
     const values = [
@@ -114,57 +146,67 @@ export function saveOrder(db: DB, ctx: Context, input: Row, record?: string) {
       total,
     ];
     if (old)
-      db.prepare(
-        "UPDATE orders SET customer_id=?,vehicle_id=?,guest_name=?,guest_plate=?,guest_vehicle=?,entered_on=?,due_on=?,km=?,problem=?,notes=?,discount=?,total=? WHERE tenant_id=? AND id=?",
-      ).run(...values, ctx.tenantId, orderId);
+      await db
+        .prepare(
+          "UPDATE orders SET customer_id=?,vehicle_id=?,guest_name=?,guest_plate=?,guest_vehicle=?,entered_on=?,due_on=?,km=?,problem=?,notes=?,discount=?,total=? WHERE tenant_id=? AND id=?",
+        )
+        .run(...values, ctx.tenantId, orderId);
     else {
       const number = Number(
-        db
+        (await db
           .prepare(
             "SELECT COALESCE(MAX(number),1000)+1 number FROM orders WHERE tenant_id=?",
           )
-          .get(ctx.tenantId)!.number,
+          .get(ctx.tenantId))!.number,
       );
-      db.prepare(
-        "INSERT INTO orders(id,tenant_id,number,kind,status,customer_id,vehicle_id,guest_name,guest_plate,guest_vehicle,entered_on,due_on,km,problem,notes,discount,total) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-      ).run(
-        orderId,
-        ctx.tenantId,
-        number,
-        kind,
-        kind === "quote" ? "quote" : "open",
-        ...values,
-      );
+      await db
+        .prepare(
+          "INSERT INTO orders(id,tenant_id,number,kind,status,customer_id,vehicle_id,guest_name,guest_plate,guest_vehicle,entered_on,due_on,km,problem,notes,discount,total) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          orderId,
+          ctx.tenantId,
+          number,
+          kind,
+          kind === "quote" ? "quote" : "open",
+          ...values,
+        );
     }
-    db.prepare("DELETE FROM order_items WHERE tenant_id=? AND order_id=?").run(
-      ctx.tenantId,
+    await db
+      .prepare("DELETE FROM order_items WHERE tenant_id=? AND order_id=?")
+      .run(ctx.tenantId, orderId);
+    for (const item of items)
+      await db
+        .prepare("INSERT INTO order_items VALUES(?,?,?,?,?,?,?,?,?,?)")
+        .run(
+          item.snapshotId,
+          ctx.tenantId,
+          orderId,
+          item.catalog_id,
+          item.professional_id,
+          item.kind,
+          item.name,
+          item.quantity,
+          item.price,
+          item.cost,
+        );
+    await audit(
+      db,
+      ctx,
+      old ? "order.updated" : `order.created.${kind}`,
       orderId,
     );
-    for (const item of items)
-      db.prepare("INSERT INTO order_items VALUES(?,?,?,?,?,?,?,?,?,?)").run(
-        item.snapshotId,
-        ctx.tenantId,
-        orderId,
-        item.catalog_id,
-        item.professional_id,
-        item.kind,
-        item.name,
-        item.quantity,
-        item.price,
-        item.cost,
-      );
-    audit(db, ctx, old ? "order.updated" : `order.created.${kind}`, orderId);
     return orderId;
   });
 }
-export function transitionOrder(
+export async function transitionOrder(
   db: DB,
   ctx: Context,
   record: string,
   status: Status,
 ) {
-  return transaction(db, () => {
-    const order = scoped(db, "orders", ctx.tenantId, record);
+  return await transaction(db, async () => {
+    const order = await scoped(db, "orders", ctx.tenantId, record);
     if (
       ctx.role !== "owner" &&
       (order.kind !== "order" ||
@@ -181,89 +223,100 @@ export function transitionOrder(
         throw new Error(
           "Vincule cliente e veículo antes de transformar o orçamento em OS.",
         );
-      const c = scoped(db, "customers", ctx.tenantId, order.customer_id),
-        v = scoped(db, "vehicles", ctx.tenantId, order.vehicle_id);
+      const c = await scoped(db, "customers", ctx.tenantId, order.customer_id),
+        v = await scoped(db, "vehicles", ctx.tenantId, order.vehicle_id);
       if (!c.active || !v.active || v.customer_id !== c.id)
         throw new Error("Confira o cliente e o veículo antes da aprovação.");
     }
     if (status === "completed") {
-      const items = db
+      const items = (await db
         .prepare("SELECT * FROM order_items WHERE tenant_id=? AND order_id=?")
-        .all(ctx.tenantId, record) as Row[];
+        .all(ctx.tenantId, record)) as Row[];
       if (!items.length)
         throw new Error(
           "Adicione pelo menos um produto ou serviço para finalizar.",
         );
       for (const item of items.filter((i) => i.kind === "product")) {
-        const changed = db
+        const changed = await db
           .prepare(
             "UPDATE catalog SET stock=stock-? WHERE tenant_id=? AND id=? AND stock>=?",
           )
           .run(item.quantity, ctx.tenantId, item.catalog_id, item.quantity);
         if (!changed.changes)
           throw new Error(`Estoque insuficiente: ${item.name}.`);
-        db.prepare(
-          "INSERT INTO stock_movements(id,tenant_id,catalog_id,order_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?,?)",
-        ).run(
-          id(),
-          ctx.tenantId,
-          item.catalog_id,
-          record,
-          -item.quantity,
-          `OS #${order.number}`,
-          ctx.userId,
-        );
+        await db
+          .prepare(
+            "INSERT INTO stock_movements(id,tenant_id,catalog_id,order_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?,?)",
+          )
+          .run(
+            id(),
+            ctx.tenantId,
+            item.catalog_id,
+            record,
+            -item.quantity,
+            `OS #${order.number}`,
+            ctx.userId,
+          );
       }
       if (order.total > 0)
-        db.prepare(
-          "INSERT INTO receivables(id,tenant_id,order_id,customer_id,description,amount,due_on,gross_total,net_total) VALUES(?,?,?,?,?,?,?,?,?)",
-        ).run(
-          id(),
-          ctx.tenantId,
-          record,
-          order.customer_id,
-          `OS #${order.number}`,
-          order.total,
-          order.due_on,
-          order.total,
-          order.total,
-        );
+        await db
+          .prepare(
+            "INSERT INTO receivables(id,tenant_id,order_id,customer_id,description,amount,due_on,gross_total,net_total) VALUES(?,?,?,?,?,?,?,?,?)",
+          )
+          .run(
+            id(),
+            ctx.tenantId,
+            record,
+            order.customer_id,
+            `OS #${order.number}`,
+            order.total,
+            order.due_on,
+            order.total,
+            order.total,
+          );
     }
-    db.prepare(
-      "UPDATE orders SET status=?,kind=?,completed_on=? WHERE tenant_id=? AND id=?",
-    ).run(
-      status,
-      order.kind === "quote" && status === "open" ? "order" : order.kind,
-      status === "completed" ? new Date().toISOString() : null,
-      ctx.tenantId,
-      record,
-    );
-    audit(db, ctx, `order.${status}`, record);
+    await db
+      .prepare(
+        "UPDATE orders SET status=?,kind=?,completed_on=? WHERE tenant_id=? AND id=?",
+      )
+      .run(
+        status,
+        order.kind === "quote" && status === "open" ? "order" : order.kind,
+        status === "completed" ? new Date().toISOString() : null,
+        ctx.tenantId,
+        record,
+      );
+    await audit(db, ctx, `order.${status}`, record);
   });
 }
-export function settle(db: DB, ctx: Context, record: string, method: string) {
+export async function settle(
+  db: DB,
+  ctx: Context,
+  record: string,
+  method: string,
+) {
   requireAdmin(ctx);
-  const r = scoped(db, "receivables", ctx.tenantId, record);
+  const r = await scoped(db, "receivables", ctx.tenantId, record);
   if (r.status !== "open") throw new Error("Esta conta já foi recebida.");
   if (!r.plan_configured)
-    configurePlan(db, ctx, record, {
+    await configurePlan(db, ctx, record, {
       method,
       installments: 1,
       card_fee_bps: 0,
       interest_bps: 0,
       first_due_on: r.due_on,
     });
-  const parts = db
+  const parts = await db
     .prepare(
       "SELECT id FROM payment_installments WHERE tenant_id=? AND receivable_id=? AND status='open'",
     )
     .all(ctx.tenantId, record);
   if (parts.length !== 1)
     throw new Error("Receba cada parcela na tela de pagamento.");
-  settleInstallment(db, ctx, String(parts[0].id));
+  await settleInstallment(db, ctx, String(parts[0].id));
 }
-export function mechanicWorkspace(db: DB, tenant: string) {
-  const orders = listOrders(db, tenant)
+export async function mechanicWorkspace(db: DB, tenant: string) {
+  const orders = (await listOrders(db, tenant))
     .filter((o) => o.kind === "order")
     .map((o) => ({
       id: o.id,

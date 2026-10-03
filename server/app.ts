@@ -12,6 +12,7 @@ import {
   startSession,
   tokenFrom,
   verifyPassword,
+  hashPassword,
   type Context,
 } from "./auth/session";
 import {
@@ -158,52 +159,87 @@ export function createApp(db: DB) {
     }
     next();
   });
-  const attempts = new Map<string, { count: number; until: number }>();
-  app.post("/api/login", (req, res) => {
+  if (process.env.VERCEL) app.set("trust proxy", 1);
+  app.post("/api/setup", async (req, res) => {
+    const input = z
+      .object({
+        token: z.string().regex(/^[a-f0-9]{64}$/),
+        password: z
+          .string()
+          .min(12, "Use uma senha com pelo menos 12 caracteres.")
+          .max(200),
+      })
+      .parse(req.body);
+    await transaction(db, async () => {
+      const setup = await db
+        .prepare(
+          "SELECT * FROM admin_setup WHERE token_hash=? AND used_at IS NULL AND expires_at>?",
+        )
+        .get(digest(input.token), Date.now());
+      if (!setup) throw new Error("Link de ativação inválido ou expirado.");
+      await db
+        .prepare("UPDATE users SET password_hash=? WHERE id=?")
+        .run(hashPassword(input.password), setup.user_id);
+      await db
+        .prepare(
+          "UPDATE admin_setup SET used_at=? WHERE user_id=? AND used_at IS NULL",
+        )
+        .run(new Date().toISOString(), setup.user_id);
+      await db
+        .prepare("DELETE FROM sessions WHERE user_id=?")
+        .run(setup.user_id);
+    });
+    res.json({ ok: true });
+  });
+  app.post("/api/login", async (req, res) => {
     const input = z
       .object({
         email: z.string().email(),
         password: z.string().min(1).max(200),
       })
       .parse(req.body);
-    const key = req.ip || "local";
-    const prior = attempts.get(key);
-    if (prior && prior.until > Date.now() && prior.count >= 10) {
+    const key = digest((req.ip || "local") + ":" + input.email.toLowerCase());
+    const now = Date.now();
+    const attempt = await db
+      .prepare(
+        "INSERT INTO login_attempts(key,count,until_at) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN login_attempts.until_at<? THEN 1 ELSE login_attempts.count+1 END,until_at=CASE WHEN login_attempts.until_at<? THEN excluded.until_at ELSE login_attempts.until_at END RETURNING count",
+      )
+      .get(key, now + 300000, now, now);
+    if (Number(attempt?.count) > 10) {
       res
         .status(429)
         .json({ error: "Aguarde alguns minutos antes de tentar novamente." });
       return;
     }
-    const user = db
+    const user = await db
       .prepare("SELECT * FROM users WHERE email=?")
       .get(input.email.toLowerCase());
     if (!user || !verifyPassword(input.password, String(user.password_hash))) {
-      const entry =
-        prior && prior.until > Date.now()
-          ? prior
-          : { count: 0, until: Date.now() + 300000 };
-      entry.count++;
-      attempts.set(key, entry);
       res.status(401).json({ error: "E-mail ou senha incorretos." });
       return;
     }
-    attempts.delete(key);
-    const membership = db
+    await db
+      .prepare("DELETE FROM login_attempts WHERE key=? OR until_at<?")
+      .run(key, now);
+    const membership = (await db
       .prepare(
         "SELECT tenant_id FROM memberships WHERE user_id=? ORDER BY tenant_id LIMIT 1",
       )
-      .get(user.id)!;
-    db.prepare("DELETE FROM sessions WHERE expires_at<? OR token_hash=?").run(
-      Date.now(),
-      digest(tokenFrom(req)),
-    );
-    startSession(db, res, String(user.id), String(membership.tenant_id));
+      .get(user.id))!;
+    await db
+      .prepare("DELETE FROM sessions WHERE expires_at<? OR token_hash=?")
+      .run(Date.now(), digest(tokenFrom(req)));
+    if (!membership) {
+      res.status(403).json({ error: "Acesso não habilitado." });
+      return;
+    }
+    await startSession(db, res, String(user.id), String(membership.tenant_id));
     res.json({ ok: true });
   });
-  app.get("/api/public/:token", (req, res) => {
+  app.get("/api/public/:token", async (req, res) => {
     res.set("X-Robots-Tag", "noindex, nofollow");
     res.set("Referrer-Policy", "no-referrer");
-    const result = readShare(db, String(req.params.token));
+    const result = await readShare(db, String(req.params.token));
     if (!result) {
       res.status(404).json({ error: "Link indisponível ou expirado." });
       return;
@@ -211,14 +247,16 @@ export function createApp(db: DB) {
     res.json(result);
   });
   app.use("/api", auth(db));
-  app.get("/api/session", (_req, res) => {
+  app.get("/api/session", async (_req, res) => {
     const ctx: Context = res.locals.context;
     res.json({
-      user: db
+      user: await db
         .prepare("SELECT id,name,email FROM users WHERE id=?")
         .get(ctx.userId),
-      tenant: db.prepare("SELECT * FROM tenants WHERE id=?").get(ctx.tenantId),
-      tenants: db
+      tenant: await db
+        .prepare("SELECT * FROM tenants WHERE id=?")
+        .get(ctx.tenantId),
+      tenants: await db
         .prepare(
           "SELECT t.* FROM tenants t JOIN memberships m ON m.tenant_id=t.id WHERE m.user_id=? ORDER BY t.name",
         )
@@ -226,27 +264,26 @@ export function createApp(db: DB) {
       role: ctx.role,
     });
   });
-  app.post("/api/logout", (req, res) => {
-    db.prepare("DELETE FROM sessions WHERE token_hash=?").run(
-      digest(tokenFrom(req)),
-    );
+  app.post("/api/logout", async (req, res) => {
+    await db
+      .prepare("DELETE FROM sessions WHERE token_hash=?")
+      .run(digest(tokenFrom(req)));
     res.clearCookie("hp_session", { path: "/" }).json({ ok: true });
   });
-  app.post("/api/tenant", (req, res) => {
+  app.post("/api/tenant", async (req, res) => {
     const ctx: Context = res.locals.context;
     const tenant = z.string().parse(req.body.tenant_id);
     if (
-      !db
+      !(await db
         .prepare("SELECT 1 FROM memberships WHERE user_id=? AND tenant_id=?")
-        .get(ctx.userId, tenant)
+        .get(ctx.userId, tenant))
     ) {
       res.status(403).json({ error: "Você não tem acesso a esta oficina." });
       return;
     }
-    db.prepare("UPDATE sessions SET tenant_id=? WHERE token_hash=?").run(
-      tenant,
-      digest(tokenFrom(req)),
-    );
+    await db
+      .prepare("UPDATE sessions SET tenant_id=? WHERE token_hash=?")
+      .run(tenant, digest(tokenFrom(req)));
     res.json({ ok: true });
   });
   app.use("/api", (req, res, next) => {
@@ -261,74 +298,74 @@ export function createApp(db: DB) {
     }
     res.status(403).json({ error: "Esta área é exclusiva do administrador." });
   });
-  app.get("/api/workspace", (_req, res) => {
+  app.get("/api/workspace", async (_req, res) => {
     const tenant = res.locals.context.tenantId;
     if (res.locals.context.role !== "owner") {
-      res.json(mechanicWorkspace(db, tenant));
+      res.json(await mechanicWorkspace(db, tenant));
       return;
     }
     res.json({
-      installments: db
+      installments: await db
         .prepare(
           "SELECT * FROM payment_installments WHERE tenant_id=? ORDER BY sequence",
         )
         .all(tenant),
-      payment_settings: db
+      payment_settings: (await db
         .prepare("SELECT * FROM payment_settings WHERE tenant_id=?")
-        .get(tenant) || {
+        .get(tenant)) || {
         debit_fee_bps: 0,
         credit_fee_bps: 0,
         interest_bps: 0,
       },
       plate_lookup_enabled: !!providerToken(tenant),
-      customers: db
+      customers: await db
         .prepare("SELECT * FROM customers WHERE tenant_id=? ORDER BY name")
         .all(tenant),
-      vehicles: db
+      vehicles: await db
         .prepare(
           "SELECT v.*,c.name customer_name FROM vehicles v JOIN customers c ON c.id=v.customer_id AND c.tenant_id=v.tenant_id WHERE v.tenant_id=? ORDER BY v.plate",
         )
         .all(tenant),
-      catalog: db
+      catalog: await db
         .prepare(
           "SELECT c.*,(SELECT group_concat(a.alias,' ') FROM service_aliases a WHERE a.tenant_id=c.tenant_id AND a.catalog_id=c.id) search_aliases FROM catalog c WHERE c.tenant_id=? AND c.merged_into IS NULL ORDER BY c.name",
         )
         .all(tenant),
-      professionals: db
+      professionals: await db
         .prepare("SELECT * FROM professionals WHERE tenant_id=? ORDER BY name")
         .all(tenant),
-      card_rates: db
+      card_rates: await db
         .prepare(
           "SELECT * FROM card_rates WHERE tenant_id=? ORDER BY installments",
         )
         .all(tenant),
-      orders: listOrders(db, tenant),
-      receivables: db
+      orders: await listOrders(db, tenant),
+      receivables: await db
         .prepare(
           `SELECT r.*,(SELECT number FROM orders o WHERE o.tenant_id=r.tenant_id AND o.id=r.order_id) order_number,c.name customer_name,CASE WHEN r.plan_configured=0 THEN r.amount ELSE COALESCE((SELECT SUM(gross) FROM payment_installments p WHERE p.tenant_id=r.tenant_id AND p.receivable_id=r.id AND p.status='open'),0) END balance FROM receivables r JOIN customers c ON c.id=r.customer_id AND c.tenant_id=r.tenant_id WHERE r.tenant_id=? ORDER BY r.due_on`,
         )
         .all(tenant),
-      cash: db
+      cash: await db
         .prepare(
           "SELECT * FROM cash_entries WHERE tenant_id=? ORDER BY created_at",
         )
         .all(tenant),
-      movements: db
+      movements: await db
         .prepare(
           "SELECT s.*,c.name product_name,u.name user_name FROM stock_movements s JOIN catalog c ON c.id=s.catalog_id AND c.tenant_id=s.tenant_id JOIN users u ON u.id=s.user_id WHERE s.tenant_id=? ORDER BY s.created_at DESC",
         )
         .all(tenant),
     });
   });
-  app.get("/api/expenses", (_req, res) => {
+  app.get("/api/expenses", async (_req, res) => {
     const t = res.locals.context.tenantId;
     res.json({
-      templates: db
+      templates: await db
         .prepare(
           "SELECT * FROM expense_templates WHERE tenant_id=? ORDER BY category,description",
         )
         .all(t),
-      payables: db
+      payables: await db
         .prepare("SELECT * FROM payables WHERE tenant_id=? ORDER BY due_on")
         .all(t),
     });
@@ -341,49 +378,53 @@ export function createApp(db: DB) {
     due_on: date,
     notes: text,
   });
-  app.post("/api/payables", (req, res) => {
+  app.post("/api/payables", async (req, res) => {
     const ctx: Context = res.locals.context;
     const value = expenseSchema.parse(req.body),
       record = id();
-    db.prepare(
-      "INSERT INTO payables(id,tenant_id,description,supplier,category,amount,due_on,notes) VALUES(?,?,?,?,?,?,?,?)",
-    ).run(
-      record,
-      ctx.tenantId,
-      value.description,
-      value.supplier,
-      value.category,
-      value.amount,
-      value.due_on,
-      value.notes,
-    );
-    audit(db, ctx, "expense.created", record);
+    await db
+      .prepare(
+        "INSERT INTO payables(id,tenant_id,description,supplier,category,amount,due_on,notes) VALUES(?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        record,
+        ctx.tenantId,
+        value.description,
+        value.supplier,
+        value.category,
+        value.amount,
+        value.due_on,
+        value.notes,
+      );
+    await audit(db, ctx, "expense.created", record);
     res.json({ id: record });
   });
-  app.put("/api/payables/:id", (req, res) => {
+  app.put("/api/payables/:id", async (req, res) => {
     const ctx: Context = res.locals.context;
-    const p = scoped(db, "payables", ctx.tenantId, String(req.params.id));
+    const p = await scoped(db, "payables", ctx.tenantId, String(req.params.id));
     if (p.status !== "open")
       throw new Error("Somente contas em aberto podem ser editadas.");
     const v = expenseSchema.parse(req.body);
-    db.prepare(
-      "UPDATE payables SET description=?,supplier=?,category=?,amount=?,due_on=?,notes=? WHERE tenant_id=? AND id=?",
-    ).run(
-      v.description,
-      v.supplier,
-      v.category,
-      v.amount,
-      v.due_on,
-      v.notes,
-      ctx.tenantId,
-      p.id,
-    );
-    audit(db, ctx, "expense.updated", p.id);
+    await db
+      .prepare(
+        "UPDATE payables SET description=?,supplier=?,category=?,amount=?,due_on=?,notes=? WHERE tenant_id=? AND id=?",
+      )
+      .run(
+        v.description,
+        v.supplier,
+        v.category,
+        v.amount,
+        v.due_on,
+        v.notes,
+        ctx.tenantId,
+        p.id,
+      );
+    await audit(db, ctx, "expense.updated", p.id);
     res.json({ ok: true });
   });
-  app.post("/api/payables/:id/pay", (req, res) => {
+  app.post("/api/payables/:id/pay", async (req, res) => {
     const value = z.object({ paid_on: date, method: name }).parse(req.body);
-    payExpense(
+    await payExpense(
       db,
       res.locals.context,
       String(req.params.id),
@@ -392,27 +433,29 @@ export function createApp(db: DB) {
     );
     res.json({ ok: true });
   });
-  app.post("/api/payables/:id/cancel", (req, res) => {
+  app.post("/api/payables/:id/cancel", async (req, res) => {
     const ctx: Context = res.locals.context;
-    const p = scoped(db, "payables", ctx.tenantId, String(req.params.id));
+    const p = await scoped(db, "payables", ctx.tenantId, String(req.params.id));
     if (p.status !== "open")
       throw new Error("Somente contas em aberto podem ser canceladas.");
-    db.prepare(
-      "UPDATE payables SET status='cancelled' WHERE tenant_id=? AND id=?",
-    ).run(ctx.tenantId, p.id);
-    audit(db, ctx, "expense.cancelled", p.id);
+    await db
+      .prepare(
+        "UPDATE payables SET status='cancelled' WHERE tenant_id=? AND id=?",
+      )
+      .run(ctx.tenantId, p.id);
+    await audit(db, ctx, "expense.cancelled", p.id);
     res.json({ ok: true });
   });
-  app.post("/api/expenses/generate", (req, res) => {
+  app.post("/api/expenses/generate", async (req, res) => {
     const month = z
       .string()
       .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
       .parse(req.body.month);
-    res.json(generateExpenses(db, res.locals.context, month));
+    res.json(await generateExpenses(db, res.locals.context, month));
   });
-  app.put("/api/expense-templates/:id", (req, res) => {
+  app.put("/api/expense-templates/:id", async (req, res) => {
     const ctx: Context = res.locals.context;
-    const p = scoped(
+    const p = await scoped(
       db,
       "expense_templates",
       ctx.tenantId,
@@ -425,24 +468,28 @@ export function createApp(db: DB) {
         active: z.number().int().min(0).max(1),
       })
       .parse(req.body);
-    db.prepare(
-      "UPDATE expense_templates SET amount=?,due_day=?,active=? WHERE tenant_id=? AND id=?",
-    ).run(v.amount, v.due_day, v.active, ctx.tenantId, p.id);
-    audit(db, ctx, "expense_template.updated", p.id);
+    await db
+      .prepare(
+        "UPDATE expense_templates SET amount=?,due_day=?,active=? WHERE tenant_id=? AND id=?",
+      )
+      .run(v.amount, v.due_day, v.active, ctx.tenantId, p.id);
+    await audit(db, ctx, "expense_template.updated", p.id);
     res.json({ ok: true });
   });
-  app.post("/api/orders/:id/share", (req, res) =>
+  app.post("/api/orders/:id/share", async (req, res) =>
     res.json({
-      ...createShare(db, res.locals.context, String(req.params.id)),
+      ...(await createShare(db, res.locals.context, String(req.params.id))),
       public_origin: process.env.PUBLIC_ORIGIN || "",
     }),
   );
-  app.post("/api/orders/:id/revoke-share", (req, res) => {
+  app.post("/api/orders/:id/revoke-share", async (req, res) => {
     const ctx: Context = res.locals.context;
-    scoped(db, "orders", ctx.tenantId, String(req.params.id));
-    db.prepare(
-      "UPDATE public_shares SET revoked=1 WHERE tenant_id=? AND order_id=?",
-    ).run(ctx.tenantId, String(req.params.id));
+    await scoped(db, "orders", ctx.tenantId, String(req.params.id));
+    await db
+      .prepare(
+        "UPDATE public_shares SET revoked=1 WHERE tenant_id=? AND order_id=?",
+      )
+      .run(ctx.tenantId, String(req.params.id));
     res.json({ ok: true });
   });
   const lookupLimits = new Map<string, { count: number; until: number }>();
@@ -464,58 +511,60 @@ export function createApp(db: DB) {
     lookupLimits.set(tenant, entry);
     res.json(await lookupVehicle(db, tenant, plate));
   });
-  app.post("/api/customers-with-vehicle", (req, res) => {
+  app.post("/api/customers-with-vehicle", async (req, res) => {
     const ctx: Context = res.locals.context;
     const customer = schemas.customers.parse(req.body.customer);
     const vehicle = schemas.vehicles
       .omit({ customer_id: true })
       .parse(req.body.vehicle);
-    const result = transaction(db, () => {
+    const result = await transaction(db, async () => {
       const customerId = id(),
         vehicleId = id();
       const fields = Object.keys(customer);
-      db.prepare(
-        `INSERT INTO customers(id,tenant_id,${fields.join(",")}) VALUES(${Array(
-          fields.length + 2,
+      await db
+        .prepare(
+          `INSERT INTO customers(id,tenant_id,${fields.join(",")}) VALUES(${Array(
+            fields.length + 2,
+          )
+            .fill("?")
+            .join(",")})`,
         )
-          .fill("?")
-          .join(",")})`,
-      ).run(customerId, ctx.tenantId, ...Object.values(customer));
+        .run(customerId, ctx.tenantId, ...Object.values(customer));
       const vf = Object.keys(vehicle);
-      db.prepare(
-        `INSERT INTO vehicles(id,tenant_id,customer_id,${vf.join(",")}) VALUES(${Array(
-          vf.length + 3,
+      await db
+        .prepare(
+          `INSERT INTO vehicles(id,tenant_id,customer_id,${vf.join(",")}) VALUES(${Array(
+            vf.length + 3,
+          )
+            .fill("?")
+            .join(",")})`,
         )
-          .fill("?")
-          .join(",")})`,
-      ).run(vehicleId, ctx.tenantId, customerId, ...Object.values(vehicle));
-      audit(db, ctx, "customers.created", customerId);
-      audit(db, ctx, "vehicles.created", vehicleId);
+        .run(vehicleId, ctx.tenantId, customerId, ...Object.values(vehicle));
+      await audit(db, ctx, "customers.created", customerId);
+      await audit(db, ctx, "vehicles.created", vehicleId);
       return { id: customerId, vehicle_id: vehicleId };
     });
     res.status(201).json(result);
   });
-  app.patch("/api/orders/:id/notes", (req, res) => {
+  app.patch("/api/orders/:id/notes", async (req, res) => {
     const ctx: Context = res.locals.context;
     const record = String(req.params.id);
-    const order = scoped(db, "orders", ctx.tenantId, record);
+    const order = await scoped(db, "orders", ctx.tenantId, record);
     if (
       order.kind !== "order" ||
       !["open", "working", "ready"].includes(order.status)
     )
       throw new Error("As observações só podem mudar em uma OS em andamento.");
     const notes = z.string().trim().max(4000).parse(req.body.notes);
-    transaction(db, () => {
-      db.prepare("UPDATE orders SET notes=? WHERE tenant_id=? AND id=?").run(
-        notes,
-        ctx.tenantId,
-        record,
-      );
-      audit(db, ctx, "order.notes_updated", record);
+    await transaction(db, async () => {
+      await db
+        .prepare("UPDATE orders SET notes=? WHERE tenant_id=? AND id=?")
+        .run(notes, ctx.tenantId, record);
+      await audit(db, ctx, "order.notes_updated", record);
     });
     res.json({ ok: true });
   });
-  app.put("/api/payment-settings", (req, res) => {
+  app.put("/api/payment-settings", async (req, res) => {
     const input = z
       .object({
         debit_fee_bps: z.number().int().min(0).max(10000),
@@ -523,18 +572,20 @@ export function createApp(db: DB) {
         interest_bps: z.number().int().min(0).max(10000),
       })
       .parse(req.body);
-    db.prepare(
-      "INSERT INTO payment_settings(tenant_id,debit_fee_bps,credit_fee_bps,interest_bps) VALUES(?,?,?,?) ON CONFLICT(tenant_id) DO UPDATE SET debit_fee_bps=excluded.debit_fee_bps,credit_fee_bps=excluded.credit_fee_bps,interest_bps=excluded.interest_bps",
-    ).run(
-      res.locals.context.tenantId,
-      input.debit_fee_bps,
-      input.credit_fee_bps,
-      input.interest_bps,
-    );
+    await db
+      .prepare(
+        "INSERT INTO payment_settings(tenant_id,debit_fee_bps,credit_fee_bps,interest_bps) VALUES(?,?,?,?) ON CONFLICT(tenant_id) DO UPDATE SET debit_fee_bps=excluded.debit_fee_bps,credit_fee_bps=excluded.credit_fee_bps,interest_bps=excluded.interest_bps",
+      )
+      .run(
+        res.locals.context.tenantId,
+        input.debit_fee_bps,
+        input.credit_fee_bps,
+        input.interest_bps,
+      );
     res.json({ ok: true });
   });
-  app.post("/api/receivables/:id/preview", (req, res) => {
-    const r = scoped(
+  app.post("/api/receivables/:id/preview", async (req, res) => {
+    const r = await scoped(
       db,
       "receivables",
       res.locals.context.tenantId,
@@ -542,9 +593,9 @@ export function createApp(db: DB) {
     );
     res.json(calculatePlan(r.amount, paymentSchema.parse(req.body)));
   });
-  app.post("/api/receivables/:id/plan", (req, res) =>
+  app.post("/api/receivables/:id/plan", async (req, res) =>
     res.json(
-      configurePlan(
+      await configurePlan(
         db,
         res.locals.context,
         String(req.params.id),
@@ -552,8 +603,8 @@ export function createApp(db: DB) {
       ),
     ),
   );
-  app.post("/api/installments/:id/settle", (req, res) => {
-    settleInstallment(db, res.locals.context, String(req.params.id));
+  app.post("/api/installments/:id/settle", async (req, res) => {
+    await settleInstallment(db, res.locals.context, String(req.params.id));
     res.json({ ok: true });
   });
   for (const table of [
@@ -562,14 +613,16 @@ export function createApp(db: DB) {
     "catalog",
     "professionals",
   ] as const) {
-    const handler = (req: express.Request, res: express.Response) => {
+    const handler = async (req: express.Request, res: express.Response) => {
       const ctx: Context = res.locals.context;
       const input: Record<string, any> = schemas[table].parse(req.body);
       const record = req.params.id ? String(req.params.id) : undefined;
-      const savedId = transaction(db, () => {
-        const old = record ? scoped(db, table, ctx.tenantId, record) : null;
+      const savedId = await transaction(db, async () => {
+        const old = record
+          ? await scoped(db, table, ctx.tenantId, record)
+          : null;
         if (table === "vehicles") {
-          const customer = scoped(
+          const customer = await scoped(
             db,
             "customers",
             ctx.tenantId,
@@ -579,11 +632,11 @@ export function createApp(db: DB) {
           if (
             old &&
             old.customer_id !== input.customer_id &&
-            db
+            (await db
               .prepare(
                 "SELECT 1 FROM orders WHERE tenant_id=? AND vehicle_id=?",
               )
-              .get(ctx.tenantId, record!)
+              .get(ctx.tenantId, record!))
           )
             throw new Error(
               "Veículos com histórico não podem trocar de proprietário nesta fase.",
@@ -598,7 +651,7 @@ export function createApp(db: DB) {
           if (old && old.kind !== input.kind)
             throw new Error("O tipo do item não pode ser alterado.");
           if (input.kind === "service") {
-            assertUniqueService(db, ctx.tenantId, input.name, record);
+            await assertUniqueService(db, ctx.tenantId, input.name, record);
             input.stock = 0;
             input.minimum_stock = 0;
           }
@@ -608,28 +661,39 @@ export function createApp(db: DB) {
         const recordId = record || id();
         const fields = Object.keys(input);
         if (old)
-          db.prepare(
-            `UPDATE ${table} SET ${fields.map((f) => `${f}=?`).join(",")} WHERE tenant_id=? AND id=?`,
-          ).run(...Object.values(input), ctx.tenantId, recordId);
+          await db
+            .prepare(
+              `UPDATE ${table} SET ${fields.map((f) => `${f}=?`).join(",")} WHERE tenant_id=? AND id=?`,
+            )
+            .run(...Object.values(input), ctx.tenantId, recordId);
         else
-          db.prepare(
-            `INSERT INTO ${table}(id,tenant_id,${fields.join(",")}) VALUES(${fields
-              .map(() => "?")
-              .concat(["?", "?"])
-              .join(",")})`,
-          ).run(recordId, ctx.tenantId, ...Object.values(input));
+          await db
+            .prepare(
+              `INSERT INTO ${table}(id,tenant_id,${fields.join(",")}) VALUES(${fields
+                .map(() => "?")
+                .concat(["?", "?"])
+                .join(",")})`,
+            )
+            .run(recordId, ctx.tenantId, ...Object.values(input));
         if (table === "catalog" && !old && input.stock > 0)
-          db.prepare(
-            "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?)",
-          ).run(
-            id(),
-            ctx.tenantId,
-            recordId,
-            input.stock,
-            "Saldo inicial",
-            ctx.userId,
-          );
-        audit(db, ctx, `${table}.${old ? "updated" : "created"}`, recordId);
+          await db
+            .prepare(
+              "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?)",
+            )
+            .run(
+              id(),
+              ctx.tenantId,
+              recordId,
+              input.stock,
+              "Saldo inicial",
+              ctx.userId,
+            );
+        await audit(
+          db,
+          ctx,
+          `${table}.${old ? "updated" : "created"}`,
+          recordId,
+        );
         return recordId;
       });
       res.json({ ok: true, id: savedId });
@@ -637,7 +701,7 @@ export function createApp(db: DB) {
     app.post(`/api/${table}`, handler);
     app.put(`/api/${table}/:id`, handler);
   }
-  app.post("/api/stock/:id", (req, res) => {
+  app.post("/api/stock/:id", async (req, res) => {
     const ctx: Context = res.locals.context;
     const input = z
       .object({
@@ -650,37 +714,46 @@ export function createApp(db: DB) {
         reason: z.string().trim().min(5).max(200),
       })
       .parse(req.body);
-    transaction(db, () => {
-      const item = scoped(db, "catalog", ctx.tenantId, String(req.params.id));
+    await transaction(db, async () => {
+      const item = await scoped(
+        db,
+        "catalog",
+        ctx.tenantId,
+        String(req.params.id),
+      );
       if (item.kind !== "product" || !item.active)
         throw new Error("Selecione um produto ativo.");
       if (item.stock + input.quantity < 0)
         throw new Error("O estoque não pode ficar negativo.");
-      db.prepare(
-        "UPDATE catalog SET stock_verified=1,stock=stock+? WHERE tenant_id=? AND id=?",
-      ).run(input.quantity, ctx.tenantId, item.id);
-      db.prepare(
-        "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?)",
-      ).run(
-        id(),
-        ctx.tenantId,
-        item.id,
-        input.quantity,
-        input.reason,
-        ctx.userId,
-      );
-      audit(db, ctx, "stock.adjusted", item.id);
+      await db
+        .prepare(
+          "UPDATE catalog SET stock_verified=1,stock=stock+? WHERE tenant_id=? AND id=?",
+        )
+        .run(input.quantity, ctx.tenantId, item.id);
+      await db
+        .prepare(
+          "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?)",
+        )
+        .run(
+          id(),
+          ctx.tenantId,
+          item.id,
+          input.quantity,
+          input.reason,
+          ctx.userId,
+        );
+      await audit(db, ctx, "stock.adjusted", item.id);
     });
     res.json({ ok: true });
   });
-  app.post("/api/orders", (req, res) =>
+  app.post("/api/orders", async (req, res) =>
     res.status(201).json({
-      id: saveOrder(db, res.locals.context, orderSchema.parse(req.body)),
+      id: await saveOrder(db, res.locals.context, orderSchema.parse(req.body)),
     }),
   );
-  app.put("/api/orders/:id", (req, res) =>
+  app.put("/api/orders/:id", async (req, res) =>
     res.json({
-      id: saveOrder(
+      id: await saveOrder(
         db,
         res.locals.context,
         orderSchema.parse(req.body),
@@ -688,8 +761,8 @@ export function createApp(db: DB) {
       ),
     }),
   );
-  app.post("/api/orders/:id/status", (req, res) => {
-    transitionOrder(
+  app.post("/api/orders/:id/status", async (req, res) => {
+    await transitionOrder(
       db,
       res.locals.context,
       String(req.params.id),
@@ -697,8 +770,8 @@ export function createApp(db: DB) {
     );
     res.json({ ok: true });
   });
-  app.post("/api/receivables/:id/settle", (req, res) => {
-    settle(
+  app.post("/api/receivables/:id/settle", async (req, res) => {
+    await settle(
       db,
       res.locals.context,
       String(req.params.id),
@@ -736,7 +809,19 @@ export function createApp(db: DB) {
         return;
       }
       const message = String(error.message || "");
-      const constraint = message.includes("UNIQUE constraint");
+      const constraint =
+        message.includes("UNIQUE constraint") || error.code === "23505";
+      if (
+        typeof error.code === "string" &&
+        /^[0-9A-Z]{5}$/.test(error.code) &&
+        !constraint
+      ) {
+        console.error("Database operation failed", { code: error.code });
+        res.status(500).json({
+          error: "Não foi possível concluir a operação. Tente novamente.",
+        });
+        return;
+      }
       res.status(error.status || 400).json({
         error: constraint
           ? "Já existe um cadastro com essa placa ou referência nesta oficina."

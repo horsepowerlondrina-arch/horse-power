@@ -29,19 +29,16 @@ export function tokenFrom(req: Request) {
       ?.slice(11) || ""
   );
 }
-export function startSession(
+export async function startSession(
   db: DB,
   res: Response,
   userId: string,
   tenantId: string,
 ) {
   const token = randomBytes(32).toString("hex");
-  db.prepare("INSERT INTO sessions VALUES(?,?,?,?)").run(
-    digest(token),
-    userId,
-    tenantId,
-    Date.now() + 86400000,
-  );
+  await db
+    .prepare("INSERT INTO sessions VALUES(?,?,?,?)")
+    .run(digest(token), userId, tenantId, Date.now() + 86400000);
   res.cookie("hp_session", token, {
     httpOnly: true,
     sameSite: "strict",
@@ -51,10 +48,10 @@ export function startSession(
   });
 }
 export function auth(db: DB) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const session = db
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const session = await db
       .prepare(
-        "SELECT s.user_id userId,s.tenant_id tenantId,m.role FROM sessions s JOIN memberships m ON m.user_id=s.user_id AND m.tenant_id=s.tenant_id WHERE token_hash=? AND expires_at>?",
+        'SELECT s.user_id "userId",s.tenant_id "tenantId",m.role FROM sessions s JOIN memberships m ON m.user_id=s.user_id AND m.tenant_id=s.tenant_id WHERE token_hash=? AND expires_at>?',
       )
       .get(digest(tokenFrom(req)), Date.now());
     if (!session) {

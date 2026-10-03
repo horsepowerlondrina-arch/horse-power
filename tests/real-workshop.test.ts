@@ -18,32 +18,35 @@ function fixture() {
     db.prepare("INSERT INTO tenants(id,name) VALUES(?,?)").run(t, t);
   return db;
 }
-test("Recurring expenses: exact month, idempotence, missing values and finite installments", () => {
+test("Recurring expenses: exact month, idempotence, missing values and finite installments", async () => {
   const db = fixture();
   db.exec(
     "INSERT INTO expense_templates(id,tenant_id,description,category,amount,due_day,remaining_months) VALUES('t','a','Ferramenta','Investimento',3673,31,2),('v','a','Peças','Variável',NULL,10,NULL),('other','b','Privado','Fixo',100,10,NULL)",
   );
-  assert.equal(generateExpenses(db, ctx, "2026-02").created, 1);
-  assert.equal(generateExpenses(db, ctx, "2026-02").created, 0);
+  assert.equal((await generateExpenses(db, ctx, "2026-02")).created, 1);
+  assert.equal((await generateExpenses(db, ctx, "2026-02")).created, 0);
   db.exec("UPDATE expense_templates SET due_day=15 WHERE id='t'");
-  assert.equal(generateExpenses(db, ctx, "2026-02").created, 0);
+  assert.equal((await generateExpenses(db, ctx, "2026-02")).created, 0);
   assert.equal(
     db.prepare("SELECT due_on FROM payables").get()!.due_on,
     "2026-02-28",
   );
-  assert.equal(generateExpenses(db, ctx, "2026-03").created, 1);
-  assert.equal(generateExpenses(db, ctx, "2026-04").created, 0);
+  assert.equal((await generateExpenses(db, ctx, "2026-03")).created, 1);
+  assert.equal((await generateExpenses(db, ctx, "2026-04")).created, 0);
   const p = db.prepare("SELECT * FROM payables ORDER BY due_on").get()!;
-  payExpense(db, ctx, String(p.id), "2026-02-27", "Pix");
-  assert.throws(() => payExpense(db, ctx, String(p.id), "2026-02-27", "Pix"));
-  assert.throws(() =>
-    payExpense(
-      db,
-      { ...ctx, tenantId: "b" },
-      String(p.id),
-      "2026-02-27",
-      "Pix",
-    ),
+  await payExpense(db, ctx, String(p.id), "2026-02-27", "Pix");
+  await assert.rejects(
+    async () => await payExpense(db, ctx, String(p.id), "2026-02-27", "Pix"),
+  );
+  await assert.rejects(
+    async () =>
+      await payExpense(
+        db,
+        { ...ctx, tenantId: "b" },
+        String(p.id),
+        "2026-02-27",
+        "Pix",
+      ),
   );
   assert.equal(
     db.prepare("SELECT SUM(amount) n FROM payables WHERE status='paid'").get()!
@@ -52,27 +55,29 @@ test("Recurring expenses: exact month, idempotence, missing values and finite in
   );
   db.close();
 });
-test("Public shares allow only selected data, expire, revoke and isolate tenants", () => {
+test("Public shares allow only selected data, expire, revoke and isolate tenants", async () => {
   const db = fixture();
   db.exec(
     "INSERT INTO orders(id,tenant_id,number,kind,status,guest_name,guest_plate,entered_on,due_on,km,notes,total) VALUES('o','a',1,'quote','quote','Cliente Nome Completo','ABC1D23','2026-09-20','2026-09-20',0,'INTERNAL SECRET',50000)",
   );
-  const s = createShare(db, ctx, "o");
+  const s = await createShare(db, ctx, "o");
   const token = s.path.split("/").pop()!;
-  const out = readShare(db, token)!;
+  const out = (await readShare(db, token))!;
   assert.equal(out.total, 50000);
   assert.equal(out.customer, "Cliente");
   assert.ok(!JSON.stringify(out).includes("INTERNAL SECRET"));
   assert.equal((out as any).tenant_id, undefined);
-  assert.throws(() => createShare(db, { ...ctx, tenantId: "b" }, "o"));
-  const s2 = createShare(db, ctx, "o");
-  assert.equal(readShare(db, token), null);
+  await assert.rejects(
+    async () => await createShare(db, { ...ctx, tenantId: "b" }, "o"),
+  );
+  const s2 = await createShare(db, ctx, "o");
+  assert.equal(await readShare(db, token), null);
   const t2 = s2.path.split("/").pop()!;
   db.prepare("UPDATE public_shares SET expires_at=0 WHERE token_hash=?").run(
     digest(t2),
   );
-  assert.equal(readShare(db, t2), null);
-  assert.equal(readShare(db, "o"), null);
+  assert.equal(await readShare(db, t2), null);
+  assert.equal(await readShare(db, "o"), null);
   db.close();
 });
 test("Inter fee pass-through preserves net and keeps extra interest separate", () => {

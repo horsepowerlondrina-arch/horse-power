@@ -14,9 +14,9 @@ function fixture() {
   return db;
 }
 const ctx = { tenantId: "a", userId: "u", role: "owner" };
-test("merge retains historical snapshots and canonical price, archives duplicate and preserves searchable names", () => {
+test("merge retains historical snapshots and canonical price, archives duplicate and preserves searchable names", async () => {
   const d = fixture();
-  mergeServices(d, ctx, "s1", ["s2"], "Troca da bobina de ignição");
+  await mergeServices(d, ctx, "s1", ["s2"], "Troca da bobina de ignição");
   const i = d.prepare("SELECT * FROM order_items").get()!;
   assert.equal(i.catalog_id, "s1");
   assert.equal(i.name, "Nome original da OS");
@@ -40,30 +40,45 @@ test("merge retains historical snapshots and canonical price, archives duplicate
     1,
   );
   assert.ok(d.prepare("SELECT 1 FROM service_aliases WHERE alias='S2'").get());
-  assert.throws(() =>
-    assertUniqueService(d, "a", "TROCA DE BOBINA DE IGNICAO!!!"),
+  await assert.rejects(
+    async () =>
+      await assertUniqueService(d, "a", "TROCA DE BOBINA DE IGNICAO!!!"),
   );
-  assert.doesNotThrow(() =>
-    assertUniqueService(d, "a", "Troca de bobina de ignição", "s1"),
+  await assert.doesNotReject(
+    async () =>
+      await assertUniqueService(d, "a", "Troca de bobina de ignição", "s1"),
   );
-  assert.doesNotThrow(() =>
-    assertUniqueService(d, "a", "Troca de bobina e velas"),
+  await assert.doesNotReject(
+    async () => await assertUniqueService(d, "a", "Troca de bobina e velas"),
   );
   assert.deepEqual(d.prepare("PRAGMA foreign_key_check").all(), []);
   d.close();
 });
-test("merge rejects foreign tenants, products, repeat merges and operators", () => {
+test("merge rejects foreign tenants, products, repeat merges and operators", async () => {
   const d = fixture();
-  assert.throws(() => mergeServices(d, ctx, "s1", ["s3"], "Teste"));
-  assert.throws(() => mergeServices(d, ctx, "s1", ["p"], "Teste"));
-  assert.throws(() =>
-    mergeServices(d, { ...ctx, role: "operator" }, "s1", ["s2"], "Teste"),
+  await assert.rejects(
+    async () => await mergeServices(d, ctx, "s1", ["s3"], "Teste"),
   );
-  mergeServices(d, ctx, "s1", ["s2"], "Bobina");
-  assert.throws(() => mergeServices(d, ctx, "s1", ["s2"], "Bobina"));
+  await assert.rejects(
+    async () => await mergeServices(d, ctx, "s1", ["p"], "Teste"),
+  );
+  await assert.rejects(
+    async () =>
+      await mergeServices(
+        d,
+        { ...ctx, role: "operator" },
+        "s1",
+        ["s2"],
+        "Teste",
+      ),
+  );
+  await mergeServices(d, ctx, "s1", ["s2"], "Bobina");
+  await assert.rejects(
+    async () => await mergeServices(d, ctx, "s1", ["s2"], "Bobina"),
+  );
   d.close();
 });
-test("service normalization preserves meaningful qualifiers and tenant isolation", () => {
+test("service normalization preserves meaningful qualifiers and tenant isolation", async () => {
   const d = fixture();
   assert.notEqual(
     serviceNameKey("Troca de coxim dianteiro"),
@@ -73,9 +88,11 @@ test("service normalization preserves meaningful qualifiers and tenant isolation
     serviceNameKey("Troca bucha"),
     serviceNameKey("Troca 2 buchas"),
   );
-  assert.doesNotThrow(() => assertUniqueService(d, "b", "Outro serviço"));
-  assert.doesNotThrow(() =>
-    assertUniqueService(d, "c", "Troca da Bobina de Ignição"),
+  await assert.doesNotReject(
+    async () => await assertUniqueService(d, "b", "Outro serviço"),
+  );
+  await assert.doesNotReject(
+    async () => await assertUniqueService(d, "c", "Troca da Bobina de Ignição"),
   );
   d.close();
 });

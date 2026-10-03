@@ -78,27 +78,27 @@ const input = (extra: Record<string, any> = {}) => ({
   items: [{ catalog_id: "a-product", quantity: 2, price: 10000 }],
   ...extra,
 });
-function ready(db: DB, record: string) {
-  transitionOrder(db, ctx, record, "working");
-  transitionOrder(db, ctx, record, "ready");
+async function ready(db: DB, record: string) {
+  await transitionOrder(db, ctx, record, "working");
+  await transitionOrder(db, ctx, record, "ready");
 }
 test("cálculo usa centavos e rejeita desconto maior que subtotal", () => {
   assert.equal(totalOf([{ price: 1999, quantity: 3 }], 100), 5897);
   assert.throws(() => totalOf([{ price: 100, quantity: 1 }], 101));
 });
-test("orçamento não baixa estoque; aprovação e conclusão geram efeitos únicos", () => {
+test("orçamento não baixa estoque; aprovação e conclusão geram efeitos únicos", async () => {
   const db = fixture();
   try {
-    const record = saveOrder(db, ctx, input({ status: "quote" }));
+    const record = await saveOrder(db, ctx, input({ status: "quote" }));
     assert.equal(
       db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!
         .stock,
       5,
     );
     assert.equal(db.prepare("SELECT COUNT(*) n FROM receivables").get()!.n, 0);
-    transitionOrder(db, ctx, record, "open");
-    ready(db, record);
-    transitionOrder(db, ctx, record, "completed");
+    await transitionOrder(db, ctx, record, "open");
+    await ready(db, record);
+    await transitionOrder(db, ctx, record, "completed");
     assert.equal(
       db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!
         .stock,
@@ -106,8 +106,13 @@ test("orçamento não baixa estoque; aprovação e conclusão geram efeitos úni
     );
     const r = db.prepare("SELECT * FROM receivables").get()!;
     assert.equal(r.amount, 19500);
-    assert.throws(() => transitionOrder(db, ctx, record, "completed"));
-    assert.throws(() => saveOrder(db, ctx, input(), record), /não podem/);
+    await assert.rejects(
+      async () => await transitionOrder(db, ctx, record, "completed"),
+    );
+    await assert.rejects(
+      async () => await saveOrder(db, ctx, input(), record),
+      /não podem/,
+    );
     assert.equal(db.prepare("SELECT COUNT(*) n FROM receivables").get()!.n, 1);
     assert.equal(
       db.prepare("SELECT COUNT(*) n FROM stock_movements").get()!.n,
@@ -117,10 +122,10 @@ test("orçamento não baixa estoque; aprovação e conclusão geram efeitos úni
     db.close();
   }
 });
-test("estoque insuficiente reverte todos os efeitos, inclusive itens anteriores", () => {
+test("estoque insuficiente reverte todos os efeitos, inclusive itens anteriores", async () => {
   const db = fixture();
   try {
-    const record = saveOrder(
+    const record = await saveOrder(
       db,
       ctx,
       input({
@@ -130,9 +135,9 @@ test("estoque insuficiente reverte todos os efeitos, inclusive itens anteriores"
         ],
       }),
     );
-    ready(db, record);
-    assert.throws(
-      () => transitionOrder(db, ctx, record, "completed"),
+    await ready(db, record);
+    await assert.rejects(
+      async () => await transitionOrder(db, ctx, record, "completed"),
       /insuficiente/,
     );
     assert.equal(
@@ -153,15 +158,18 @@ test("estoque insuficiente reverte todos os efeitos, inclusive itens anteriores"
     db.close();
   }
 });
-test("baixa integral gera caixa uma única vez e recusa segunda baixa", () => {
+test("baixa integral gera caixa uma única vez e recusa segunda baixa", async () => {
   const db = fixture();
   try {
-    const record = saveOrder(db, ctx, input());
-    ready(db, record);
-    transitionOrder(db, ctx, record, "completed");
+    const record = await saveOrder(db, ctx, input());
+    await ready(db, record);
+    await transitionOrder(db, ctx, record, "completed");
     const r = db.prepare("SELECT id FROM receivables").get()!;
-    settle(db, ctx, String(r.id), "Pix");
-    assert.throws(() => settle(db, ctx, String(r.id), "Pix"), /já foi/);
+    await settle(db, ctx, String(r.id), "Pix");
+    await assert.rejects(
+      async () => await settle(db, ctx, String(r.id), "Pix"),
+      /já foi/,
+    );
     assert.equal(
       db.prepare("SELECT SUM(amount) total FROM cash_entries").get()!.total,
       19500,
@@ -174,16 +182,17 @@ test("baixa integral gera caixa uma única vez e recusa segunda baixa", () => {
     db.close();
   }
 });
-test("vínculos de outra oficina e veículo de outro cliente são recusados", () => {
+test("vínculos de outra oficina e veículo de outro cliente são recusados", async () => {
   const db = fixture();
   try {
-    assert.throws(
-      () => saveOrder(db, ctx, input({ customer_id: "b-customer" })),
+    await assert.rejects(
+      async () =>
+        await saveOrder(db, ctx, input({ customer_id: "b-customer" })),
       /não encontrado/,
     );
-    assert.throws(
-      () =>
-        saveOrder(
+    await assert.rejects(
+      async () =>
+        await saveOrder(
           db,
           ctx,
           input({
@@ -197,8 +206,8 @@ test("vínculos de outra oficina e veículo de outro cliente são recusados", ()
       "a",
       "Outro cliente",
     );
-    assert.throws(
-      () => saveOrder(db, ctx, input({ customer_id: "other" })),
+    await assert.rejects(
+      async () => await saveOrder(db, ctx, input({ customer_id: "other" })),
       /não pertence/,
     );
     assert.equal(db.prepare("SELECT COUNT(*) n FROM orders").get()!.n, 0);
@@ -206,13 +215,18 @@ test("vínculos de outra oficina e veículo de outro cliente são recusados", ()
     db.close();
   }
 });
-test("documento finalizado e cancelado não podem ser alterados", () => {
+test("documento finalizado e cancelado não podem ser alterados", async () => {
   const db = fixture();
   try {
-    const record = saveOrder(db, ctx, input());
-    transitionOrder(db, ctx, record, "cancelled");
-    assert.throws(() => saveOrder(db, ctx, input(), record), /não podem/);
-    assert.throws(() => transitionOrder(db, ctx, record, "open"));
+    const record = await saveOrder(db, ctx, input());
+    await transitionOrder(db, ctx, record, "cancelled");
+    await assert.rejects(
+      async () => await saveOrder(db, ctx, input(), record),
+      /não podem/,
+    );
+    await assert.rejects(
+      async () => await transitionOrder(db, ctx, record, "open"),
+    );
     assert.equal(
       db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!
         .stock,
@@ -222,10 +236,10 @@ test("documento finalizado e cancelado não podem ser alterados", () => {
     db.close();
   }
 });
-test("snapshot de preço não muda ao alterar o catálogo", () => {
+test("snapshot de preço não muda ao alterar o catálogo", async () => {
   const db = fixture();
   try {
-    const record = saveOrder(db, ctx, input());
+    const record = await saveOrder(db, ctx, input());
     db.prepare("UPDATE catalog SET price=99999 WHERE id=?").run("a-product");
     assert.equal(
       db.prepare("SELECT total FROM orders WHERE id=?").get(record)!.total,
@@ -240,12 +254,12 @@ test("snapshot de preço não muda ao alterar o catálogo", () => {
     db.close();
   }
 });
-test("dados persistem ao fechar e reabrir o banco", () => {
+test("dados persistem ao fechar e reabrir o banco", async () => {
   const dir = mkdtempSync(join(tmpdir(), "horse-power-test-"));
   const path = join(dir, "test.sqlite");
   try {
     const db = fixture(path);
-    const record = saveOrder(db, ctx, input());
+    const record = await saveOrder(db, ctx, input());
     db.close();
     const reopened = createDatabase(path);
     try {
@@ -357,10 +371,10 @@ test("API autentica, protege oficinas, valida entrada e revoga sessão", async (
   }
 });
 
-test("orçamento avulso preserva seu tipo ao cancelar e exige vínculos na aprovação", () => {
+test("orçamento avulso preserva seu tipo ao cancelar e exige vínculos na aprovação", async () => {
   const db = fixture();
   try {
-    const guest = saveOrder(
+    const guest = await saveOrder(
       db,
       ctx,
       input({
@@ -370,20 +384,26 @@ test("orçamento avulso preserva seu tipo ao cancelar e exige vínculos na aprov
         guest_name: "Consulta sem cadastro",
       }),
     );
-    assert.equal(listOrders(db, "a")[0].customer_name, "Consulta sem cadastro");
-    assert.throws(() => transitionOrder(db, ctx, guest, "open"), /Vincule/);
-    transitionOrder(db, ctx, guest, "cancelled");
-    const rows = listOrders(db, "a") as Order[];
+    assert.equal(
+      (await listOrders(db, "a"))[0].customer_name,
+      "Consulta sem cadastro",
+    );
+    await assert.rejects(
+      async () => await transitionOrder(db, ctx, guest, "open"),
+      /Vincule/,
+    );
+    await transitionOrder(db, ctx, guest, "cancelled");
+    const rows = (await listOrders(db, "a")) as Order[];
     assert.equal(filterOrders(rows, true, "all").length, 1);
     assert.equal(filterOrders(rows, true, "cancelled").length, 1);
     assert.equal(filterOrders(rows, false, "all").length, 0);
-    const quote = saveOrder(
+    const quote = await saveOrder(
       db,
       ctx,
       input({ status: "quote", customer_id: null, vehicle_id: null }),
     );
-    saveOrder(db, ctx, input({ status: "quote" }), quote);
-    transitionOrder(db, ctx, quote, "open");
+    await saveOrder(db, ctx, input({ status: "quote" }), quote);
+    await transitionOrder(db, ctx, quote, "open");
     assert.equal(
       db.prepare("SELECT kind FROM orders WHERE id=?").get(quote)!.kind,
       "order",
@@ -443,14 +463,14 @@ test("parcelas conservam centavos, taxas e líquido, inclusive nos limites de ar
     }),
   );
 });
-test("OS fica a receber até a última parcela e o caixa registra somente o líquido confirmado", () => {
+test("OS fica a receber até a última parcela e o caixa registra somente o líquido confirmado", async () => {
   const db = fixture();
   try {
-    const record = saveOrder(db, ctx, input());
-    ready(db, record);
-    transitionOrder(db, ctx, record, "completed");
+    const record = await saveOrder(db, ctx, input());
+    await ready(db, record);
+    await transitionOrder(db, ctx, record, "completed");
     const r = db.prepare("SELECT id FROM receivables").get()!;
-    const plan = configurePlan(db, ctx, String(r.id), {
+    const plan = await configurePlan(db, ctx, String(r.id), {
       method: "Cartão de crédito",
       installments: 3,
       card_fee_bps: 350,
@@ -461,26 +481,31 @@ test("OS fica a receber até a última parcela e o caixa registra somente o líq
       .prepare("SELECT * FROM payment_installments ORDER BY sequence")
       .all();
     assert.equal(
-      filterOrders(listOrders(db, "a") as Order[], false, "active").length,
+      filterOrders((await listOrders(db, "a")) as Order[], false, "active")
+        .length,
       1,
     );
-    assert.throws(
-      () =>
-        settleInstallment(db, { ...ctx, tenantId: "b" }, String(parts[0].id)),
+    await assert.rejects(
+      async () =>
+        await settleInstallment(
+          db,
+          { ...ctx, tenantId: "b" },
+          String(parts[0].id),
+        ),
       /não encontrado/,
     );
-    settleInstallment(db, ctx, String(parts[0].id));
+    await settleInstallment(db, ctx, String(parts[0].id));
     assert.equal(
       db.prepare("SELECT SUM(amount) n FROM cash_entries").get()!.n,
       parts[0].net,
     );
-    assert.throws(
-      () => settleInstallment(db, ctx, String(parts[0].id)),
+    await assert.rejects(
+      async () => await settleInstallment(db, ctx, String(parts[0].id)),
       /já foi/,
     );
-    assert.throws(
-      () =>
-        configurePlan(db, ctx, String(r.id), {
+    await assert.rejects(
+      async () =>
+        await configurePlan(db, ctx, String(r.id), {
           method: "Pix",
           installments: 1,
           card_fee_bps: 0,
@@ -489,19 +514,24 @@ test("OS fica a receber até a última parcela e o caixa registra somente o líq
         }),
       /não pode mudar/,
     );
-    assert.equal(listOrders(db, "a")[0].display_status, "awaiting_payment");
+    assert.equal(
+      (await listOrders(db, "a"))[0].display_status,
+      "awaiting_payment",
+    );
     assert.equal(
       db.prepare("SELECT due_on FROM receivables").get()!.due_on,
       "2026-02-28",
     );
-    settleInstallment(db, ctx, String(parts[1].id));
-    settleInstallment(db, ctx, String(parts[2].id));
+    await settleInstallment(db, ctx, String(parts[1].id));
+    await settleInstallment(db, ctx, String(parts[2].id));
     assert.equal(
-      filterOrders(listOrders(db, "a") as Order[], false, "active").length,
+      filterOrders((await listOrders(db, "a")) as Order[], false, "active")
+        .length,
       0,
     );
     assert.equal(
-      filterOrders(listOrders(db, "a") as Order[], false, "completed").length,
+      filterOrders((await listOrders(db, "a")) as Order[], false, "completed")
+        .length,
       1,
     );
     const cash = db
@@ -517,13 +547,13 @@ test("OS fica a receber até a última parcela e o caixa registra somente o líq
     db.close();
   }
 });
-test("faturamento separa peças e serviços com desconto proporcional e custo histórico", () => {
+test("faturamento separa peças e serviços com desconto proporcional e custo histórico", async () => {
   const db = fixture();
   try {
     db.prepare(
       "INSERT INTO catalog(id,tenant_id,kind,name,sku,cost,price) VALUES('service','a','service','Serviço','SVC',0,10000)",
     ).run();
-    const record = saveOrder(
+    const record = await saveOrder(
       db,
       ctx,
       input({
@@ -534,16 +564,16 @@ test("faturamento separa peças e serviços com desconto proporcional e custo hi
         ],
       }),
     );
-    const original = listOrders(db, "a")[0];
+    const original = (await listOrders(db, "a"))[0];
     db.prepare("UPDATE catalog SET cost=9999 WHERE id='a-product'").run();
-    saveOrder(db, ctx, { ...original, items: original.items }, record);
-    const second = listOrders(db, "a")[0];
-    saveOrder(db, ctx, { ...second, items: second.items }, record);
-    ready(db, record);
-    transitionOrder(db, ctx, record, "completed");
+    await saveOrder(db, ctx, { ...original, items: original.items }, record);
+    const second = (await listOrders(db, "a"))[0];
+    await saveOrder(db, ctx, { ...second, items: second.items }, record);
+    await ready(db, record);
+    await transitionOrder(db, ctx, record, "completed");
     assert.deepEqual(
       revenueBreakdown(
-        listOrders(db, "a") as Order[],
+        (await listOrders(db, "a")) as Order[],
         "2000-01-01",
         "2100-01-01",
       ),
@@ -615,8 +645,8 @@ test("consulta por placa isola cadastros e trata resposta externa sem expor cred
 });
 test("API cadastra cliente e veículo atomicamente e limita o mecânico à operação", async () => {
   const db = fixture();
-  const record = saveOrder(db, ctx, input());
-  saveOrder(db, ctx, input({ status: "quote" }));
+  const record = await saveOrder(db, ctx, input());
+  await saveOrder(db, ctx, input({ status: "quote" }));
   const server = createApp(db).listen(0, "127.0.0.1");
   await new Promise<void>((r) => server.once("listening", r));
   let cookie = "";

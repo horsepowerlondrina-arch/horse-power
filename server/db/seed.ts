@@ -1,19 +1,21 @@
 import type { DB } from "./database";
 import { hashPassword } from "../auth/session";
 import { saveOrder, transitionOrder, settle } from "../services/workshop";
-export function seed(db: DB) {
-  if (db.prepare("SELECT 1 FROM import_batches LIMIT 1").get()) return;
-  if (db.prepare("SELECT id FROM users LIMIT 1").get()) {
-    ensureMechanic(db);
+export async function seed(db: DB) {
+  if (await db.prepare("SELECT 1 FROM import_batches LIMIT 1").get()) return;
+  if (await db.prepare("SELECT id FROM users LIMIT 1").get()) {
+    await ensureMechanic(db);
     return;
   }
   const userId = "demo-owner";
-  db.prepare("INSERT INTO users VALUES(?,?,?,?)").run(
-    userId,
-    "Gustavo",
-    "demo@horsepower.local",
-    hashPassword("HorsePower@2026"),
-  );
+  await db
+    .prepare("INSERT INTO users VALUES(?,?,?,?)")
+    .run(
+      userId,
+      "Gustavo",
+      "demo@horsepower.local",
+      hashPassword("HorsePower@2026"),
+    );
   const date = (offset = 0) => {
     const d = new Date();
     d.setDate(d.getDate() + offset);
@@ -27,14 +29,12 @@ export function seed(db: DB) {
     ["hp-centro", "Horse Power Centro"],
     ["hp-norte", "Oficina Norte"],
   ]) {
-    db.prepare(
-      "INSERT INTO tenants(id,name,phone,address) VALUES(?,?,?,?)",
-    ).run(tenant, name, "(11) 3000-2026", "São Paulo, SP");
-    db.prepare("INSERT INTO memberships VALUES(?,?,?)").run(
-      userId,
-      tenant,
-      "owner",
-    );
+    await db
+      .prepare("INSERT INTO tenants(id,name,phone,address) VALUES(?,?,?,?)")
+      .run(tenant, name, "(11) 3000-2026", "São Paulo, SP");
+    await db
+      .prepare("INSERT INTO memberships VALUES(?,?,?)")
+      .run(userId, tenant, "owner");
     const ctx = { userId, tenantId: tenant, role: "owner" };
     const customers =
       tenant === "hp-centro"
@@ -47,22 +47,25 @@ export function seed(db: DB) {
             "Pedro Martins",
           ]
         : ["André Ribeiro"];
-    customers.forEach((name, i) =>
-      db
-        .prepare(
-          "INSERT INTO customers(id,tenant_id,name,phone,email) VALUES(?,?,?,?,?)",
-        )
-        .run(
-          `${tenant}-c${i}`,
-          tenant,
-          name,
-          `(11) 99000-00${String(i + 10)}`,
-          `${name
-            .split(" ")[0]
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase()}@example.com`,
-        ),
+    await Promise.all(
+      customers.map(
+        async (name, i) =>
+          await db
+            .prepare(
+              "INSERT INTO customers(id,tenant_id,name,phone,email) VALUES(?,?,?,?,?)",
+            )
+            .run(
+              `${tenant}-c${i}`,
+              tenant,
+              name,
+              `(11) 99000-00${String(i + 10)}`,
+              `${name
+                .split(" ")[0]
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()}@example.com`,
+            ),
+      ),
     );
     const cars = [
       ["Volkswagen", "T-Cross", "ABC1D23", 2022, "Branco", 45200],
@@ -72,26 +75,35 @@ export function seed(db: DB) {
       ["Jeep", "Compass", "NOP3Q45", 2022, "Preto", 39700],
       ["Fiat", "Argo", "RST6U78", 2020, "Vermelho", 72900],
     ];
-    customers.forEach((_, i) => {
-      const [brand, model, plate, year, color, km] = cars[i];
-      db.prepare(
-        "INSERT INTO vehicles(id,tenant_id,customer_id,brand,model,plate,year,color,km) VALUES(?,?,?,?,?,?,?,?,?)",
-      ).run(
-        `${tenant}-v${i}`,
-        tenant,
-        `${tenant}-c${i}`,
-        brand,
-        model,
-        plate,
-        year,
-        color,
-        km,
-      );
-    });
-    ["Carlos Mendes", "João Pereira", "Diego Lima"].forEach((name, i) =>
-      db
-        .prepare("INSERT INTO professionals(id,tenant_id,name) VALUES(?,?,?)")
-        .run(`${tenant}-p${i}`, tenant, name),
+    await Promise.all(
+      customers.map(async (_, i) => {
+        const [brand, model, plate, year, color, km] = cars[i];
+        await db
+          .prepare(
+            "INSERT INTO vehicles(id,tenant_id,customer_id,brand,model,plate,year,color,km) VALUES(?,?,?,?,?,?,?,?,?)",
+          )
+          .run(
+            `${tenant}-v${i}`,
+            tenant,
+            `${tenant}-c${i}`,
+            brand,
+            model,
+            plate,
+            year,
+            color,
+            km,
+          );
+      }),
+    );
+    await Promise.all(
+      ["Carlos Mendes", "João Pereira", "Diego Lima"].map(
+        async (name, i) =>
+          await db
+            .prepare(
+              "INSERT INTO professionals(id,tenant_id,name) VALUES(?,?,?)",
+            )
+            .run(`${tenant}-p${i}`, tenant, name),
+      ),
     );
     const catalog = [
       [
@@ -177,22 +189,28 @@ export function seed(db: DB) {
         0,
       ],
     ];
-    catalog.forEach((row, i) => {
-      db.prepare(
-        "INSERT INTO catalog(id,tenant_id,kind,name,sku,category,cost,price,stock,minimum_stock) VALUES(?,?,?,?,?,?,?,?,?,?)",
-      ).run(`${tenant}-i${i}`, tenant, ...row);
-      if (Number(row[6]) > 0)
-        db.prepare(
-          "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?)",
-        ).run(
-          `${tenant}-initial-${i}`,
-          tenant,
-          `${tenant}-i${i}`,
-          Number(row[6]),
-          "Saldo inicial de demonstração",
-          userId,
-        );
-    });
+    await Promise.all(
+      catalog.map(async (row, i) => {
+        await db
+          .prepare(
+            "INSERT INTO catalog(id,tenant_id,kind,name,sku,category,cost,price,stock,minimum_stock) VALUES(?,?,?,?,?,?,?,?,?,?)",
+          )
+          .run(`${tenant}-i${i}`, tenant, ...row);
+        if (Number(row[6]) > 0)
+          await db
+            .prepare(
+              "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?)",
+            )
+            .run(
+              `${tenant}-initial-${i}`,
+              tenant,
+              `${tenant}-i${i}`,
+              Number(row[6]),
+              "Saldo inicial de demonstração",
+              userId,
+            );
+      }),
+    );
     if (tenant !== "hp-centro") continue;
     const states = [
       "working",
@@ -205,11 +223,11 @@ export function seed(db: DB) {
       "completed",
       "completed",
     ];
-    states.forEach((status, i) => {
+    for (const [i, status] of states.entries()) {
       const customer = i % customers.length;
       const idx = i % 3 === 0 ? 6 : i % 3 === 1 ? 8 : 5;
       const days = i > 4 ? -(i - 4) * 2 : 0;
-      const orderId = saveOrder(db, ctx, {
+      const orderId = await saveOrder(db, ctx, {
         customer_id: `${tenant}-c${customer}`,
         vehicle_id: `${tenant}-v${customer}`,
         status: status === "quote" ? "quote" : "open",
@@ -235,41 +253,43 @@ export function seed(db: DB) {
         ],
       });
       if (["working", "ready", "completed"].includes(status))
-        transitionOrder(db, ctx, orderId, "working");
+        await transitionOrder(db, ctx, orderId, "working");
       if (["ready", "completed"].includes(status))
-        transitionOrder(db, ctx, orderId, "ready");
+        await transitionOrder(db, ctx, orderId, "ready");
       if (status === "completed") {
-        transitionOrder(db, ctx, orderId, "completed");
+        await transitionOrder(db, ctx, orderId, "completed");
         if (i > 5) {
-          const r = db
+          const r = (await db
             .prepare("SELECT id FROM receivables WHERE order_id=?")
-            .get(orderId)!;
-          settle(db, ctx, String(r.id), "Pix");
-          db.prepare(
-            "UPDATE cash_entries SET created_at=? WHERE receivable_id=?",
-          ).run(`${date(days)} 10:30:00`, r.id);
-          db.prepare("UPDATE receivables SET paid_at=? WHERE id=?").run(
-            `${date(days)}T13:30:00Z`,
-            r.id,
-          );
+            .get(orderId))!;
+          await settle(db, ctx, String(r.id), "Pix");
+          await db
+            .prepare(
+              "UPDATE cash_entries SET created_at=? WHERE receivable_id=?",
+            )
+            .run(`${date(days)} 10:30:00`, r.id);
+          await db
+            .prepare("UPDATE receivables SET paid_at=? WHERE id=?")
+            .run(`${date(days)}T13:30:00Z`, r.id);
         }
       }
-    });
+    }
   }
-  ensureMechanic(db);
+  await ensureMechanic(db);
 }
 
-function ensureMechanic(db: DB) {
-  if (!db.prepare("SELECT id FROM tenants WHERE id='hp-centro'").get()) return;
-  db.prepare("INSERT OR IGNORE INTO users VALUES(?,?,?,?)").run(
-    "demo-mechanic",
-    "Carlos Mendes",
-    "mecanico@horsepower.local",
-    hashPassword("Mecanico@2026"),
-  );
-  db.prepare("INSERT OR IGNORE INTO memberships VALUES(?,?,?)").run(
-    "demo-mechanic",
-    "hp-centro",
-    "operator",
-  );
+async function ensureMechanic(db: DB) {
+  if (!(await db.prepare("SELECT id FROM tenants WHERE id='hp-centro'").get()))
+    return;
+  await db
+    .prepare("INSERT OR IGNORE INTO users VALUES(?,?,?,?)")
+    .run(
+      "demo-mechanic",
+      "Carlos Mendes",
+      "mecanico@horsepower.local",
+      hashPassword("Mecanico@2026"),
+    );
+  await db
+    .prepare("INSERT OR IGNORE INTO memberships VALUES(?,?,?)")
+    .run("demo-mechanic", "hp-centro", "operator");
 }

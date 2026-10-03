@@ -17,3 +17,7 @@ Logo Horse Power/
 *.pdf
 *.xlsx
 *.sqlite*
+
+supabase/.temp/
+supabase/.branches/
+.vercel

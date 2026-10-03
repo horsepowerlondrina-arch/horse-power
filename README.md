@@ -1,3 +1,5 @@
+> Produção: configuração Supabase/Vercel e ativação do administrador em [docs/07-supabase-vercel.md](docs/07-supabase-vercel.md). As credenciais de demonstração abaixo são somente para desenvolvimento local.
+
 # Horse Power
 
 Fundação de um SaaS de gestão para oficinas mecânicas, construída a partir da análise visual de todas as **22 referências** do MinhaOficina. Identidade própria em preto, branco e vermelho.

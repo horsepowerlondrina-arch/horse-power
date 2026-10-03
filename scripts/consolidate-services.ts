@@ -48,12 +48,12 @@ db.exec(`VACUUM INTO '${backup}'`);
 const before = snapshot();
 const report: any[] = [];
 try {
-  transaction(db, () => {
+  await transaction(db, async () => {
     for (const [canonical, duplicate, name] of groups) {
       const old = db
         .prepare("SELECT id,name,price FROM catalog WHERE id IN (?,?)")
         .all(canonical, duplicate);
-      mergeServices(
+      await mergeServices(
         db,
         { tenantId: tenant, userId: "demo-owner", role: "owner" },
         canonical,

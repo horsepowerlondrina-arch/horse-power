@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -12,15 +13,49 @@ export function createDatabase(
   migrate(db);
   return db;
 }
-export type DB = ReturnType<typeof createDatabase>;
-export function transaction<T>(db: DB, callback: () => T): T {
-  db.exec("BEGIN IMMEDIATE");
+export type Row = Record<string, any>;
+export type MaybePromise<T> = T | Promise<T>;
+export interface DB {
+  prepare(sql: string): {
+    get(...values: any[]): MaybePromise<Row | undefined>;
+    all(...values: any[]): MaybePromise<Row[]>;
+    run(...values: any[]): MaybePromise<{ changes: number | bigint }>;
+  };
+  exec(sql: string): MaybePromise<void>;
+}
+export interface TransactionalDB extends DB {
+  transaction<T>(callback: () => Promise<T>): Promise<T>;
+}
+const localTransactions = new AsyncLocalStorage<DB>();
+const localQueues = new WeakMap<DB, Promise<void>>();
+export async function transaction<T>(
+  db: DB,
+  callback: () => T | Promise<T>,
+): Promise<T> {
+  if ("transaction" in db)
+    return (db as TransactionalDB).transaction(async () => callback());
+  if (localTransactions.getStore() === db) return callback();
+  const previous = localQueues.get(db) || Promise.resolve();
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  localQueues.set(
+    db,
+    previous.then(() => pending),
+  );
+  await previous;
   try {
-    const result = callback();
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
+    await db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = await localTransactions.run(db, callback);
+      await db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+  } finally {
+    release();
   }
 }

@@ -1,4 +1,4 @@
-import { type DB } from "../db/database";
+import { type DB, transaction } from "../db/database";
 import type { Context } from "../auth/session";
 import { requireAdmin } from "./payments";
 import { audit, id, scoped } from "./workshop";
@@ -11,32 +11,33 @@ export const serviceNameKey = (name: string) =>
     .split(/\s+/)
     .filter((w) => w && !["de", "do", "da", "dos", "das"].includes(w))
     .join(" ");
-export function assertUniqueService(
+export async function assertUniqueService(
   db: DB,
   tenant: string,
   name: string,
   record?: string,
 ) {
   const key = serviceNameKey(name);
-  const alias = db
+  const alias = await db
     .prepare(
       "SELECT c.id,c.name FROM service_aliases a JOIN catalog c ON c.id=a.catalog_id AND c.tenant_id=a.tenant_id WHERE a.tenant_id=? AND a.alias_key=? AND c.id<>?",
     )
     .get(tenant, key, record || "");
   const existing =
     alias ||
-    db
-      .prepare(
-        "SELECT id,name FROM catalog WHERE tenant_id=? AND kind='service' AND merged_into IS NULL AND id<>?",
-      )
-      .all(tenant, record || "")
-      .find((c) => serviceNameKey(String(c.name)) === key);
+    (
+      await db
+        .prepare(
+          "SELECT id,name FROM catalog WHERE tenant_id=? AND kind='service' AND merged_into IS NULL AND id<>?",
+        )
+        .all(tenant, record || "")
+    ).find((c) => serviceNameKey(String(c.name)) === key);
   if (existing)
     throw new Error(
       `Este serviço já está cadastrado como “${existing.name}”. Selecione o cadastro existente (ou reative-o se estiver inativo).`,
     );
 }
-export function mergeServices(
+export async function mergeServices(
   db: DB,
   ctx: Context,
   canonicalId: string,
@@ -44,18 +45,20 @@ export function mergeServices(
   name: string,
 ) {
   requireAdmin(ctx);
-  return mergeTransaction(db, () => {
+  return await transaction(db, async () => {
     const ids = [canonicalId, ...duplicateIds];
     if (new Set(ids).size !== ids.length || !duplicateIds.length)
       throw new Error("Grupo de serviços inválido.");
-    const records = ids.map((record) =>
-      scoped(db, "catalog", ctx.tenantId, record),
+    const records = await Promise.all(
+      ids.map(
+        async (record) => await scoped(db, "catalog", ctx.tenantId, record),
+      ),
     );
     if (records.some((r) => r.kind !== "service" || !r.active || r.merged_into))
       throw new Error(
         "Só é possível consolidar serviços ativos ainda não unificados.",
       );
-    const beforeItems = db
+    const beforeItems = await db
       .prepare(
         `SELECT id,catalog_id FROM order_items WHERE tenant_id=? AND catalog_id IN (${ids.map(() => "?").join(",")})`,
       )
@@ -63,59 +66,54 @@ export function mergeServices(
     const aliases = [
       name,
       ...records.flatMap((r) => [r.name, r.sku]),
-      ...db
-        .prepare(
-          `SELECT alias FROM service_aliases WHERE tenant_id=? AND catalog_id IN (${ids.map(() => "?").join(",")})`,
-        )
-        .all(ctx.tenantId, ...ids)
-        .map((r) => String(r.alias)),
+      ...(
+        await db
+          .prepare(
+            `SELECT alias FROM service_aliases WHERE tenant_id=? AND catalog_id IN (${ids.map(() => "?").join(",")})`,
+          )
+          .all(ctx.tenantId, ...ids)
+      ).map((r) => String(r.alias)),
     ];
     for (const alias of aliases) {
       const key = serviceNameKey(alias);
-      const prior = db
+      const prior = await db
         .prepare(
           "SELECT catalog_id FROM service_aliases WHERE tenant_id=? AND alias_key=?",
         )
         .get(ctx.tenantId, key);
       if (prior && !ids.includes(String(prior.catalog_id)))
         throw new Error("Nome alternativo já pertence a outro serviço.");
-      db.prepare(
-        "INSERT INTO service_aliases(tenant_id,alias_key,alias,catalog_id) VALUES(?,?,?,?) ON CONFLICT(tenant_id,alias_key) DO UPDATE SET catalog_id=excluded.catalog_id",
-      ).run(ctx.tenantId, key, alias, canonicalId);
+      await db
+        .prepare(
+          "INSERT INTO service_aliases(tenant_id,alias_key,alias,catalog_id) VALUES(?,?,?,?) ON CONFLICT(tenant_id,alias_key) DO UPDATE SET catalog_id=excluded.catalog_id",
+        )
+        .run(ctx.tenantId, key, alias, canonicalId);
     }
-    db.prepare(
-      "INSERT INTO service_merge_history(id,tenant_id,canonical_id,previous_records) VALUES(?,?,?,?)",
-    ).run(
-      id(),
-      ctx.tenantId,
-      canonicalId,
-      JSON.stringify({ records, items: beforeItems }),
-    );
-    db.prepare("UPDATE catalog SET name=? WHERE tenant_id=? AND id=?").run(
-      name,
-      ctx.tenantId,
-      canonicalId,
-    );
+    await db
+      .prepare(
+        "INSERT INTO service_merge_history(id,tenant_id,canonical_id,previous_records) VALUES(?,?,?,?)",
+      )
+      .run(
+        id(),
+        ctx.tenantId,
+        canonicalId,
+        JSON.stringify({ records, items: beforeItems }),
+      );
+    await db
+      .prepare("UPDATE catalog SET name=? WHERE tenant_id=? AND id=?")
+      .run(name, ctx.tenantId, canonicalId);
     for (const duplicate of duplicateIds) {
-      db.prepare(
-        "UPDATE order_items SET catalog_id=? WHERE tenant_id=? AND catalog_id=?",
-      ).run(canonicalId, ctx.tenantId, duplicate);
-      db.prepare(
-        "UPDATE catalog SET active=0,merged_into=? WHERE tenant_id=? AND id=?",
-      ).run(canonicalId, ctx.tenantId, duplicate);
+      await db
+        .prepare(
+          "UPDATE order_items SET catalog_id=? WHERE tenant_id=? AND catalog_id=?",
+        )
+        .run(canonicalId, ctx.tenantId, duplicate);
+      await db
+        .prepare(
+          "UPDATE catalog SET active=0,merged_into=? WHERE tenant_id=? AND id=?",
+        )
+        .run(canonicalId, ctx.tenantId, duplicate);
     }
-    audit(db, ctx, "services.consolidated", canonicalId);
+    await audit(db, ctx, "services.consolidated", canonicalId);
   });
-}
-
-function mergeTransaction<T>(db: DB, action: () => T): T {
-  db.exec("SAVEPOINT service_merge");
-  try {
-    const result = action();
-    db.exec("RELEASE service_merge");
-    return result;
-  } catch (error) {
-    db.exec("ROLLBACK TO service_merge; RELEASE service_merge");
-    throw error;
-  }
 }

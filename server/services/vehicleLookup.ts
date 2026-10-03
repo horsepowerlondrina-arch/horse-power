@@ -38,7 +38,7 @@ export async function lookupVehicle(
   const plate = normalizePlate(rawPlate);
   if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(plate))
     throw new Error("Informe uma placa válida.");
-  const local = db
+  const local = await db
     .prepare(
       "SELECT id,customer_id,plate,brand,model,year,color,km,chassis,active FROM vehicles WHERE tenant_id=? AND plate=?",
     )

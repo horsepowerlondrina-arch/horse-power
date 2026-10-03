@@ -2,19 +2,21 @@ import { type DB, transaction } from "../db/database";
 import { type Context } from "../auth/session";
 import { audit, id, scoped } from "./workshop";
 import { requireAdmin } from "./payments";
-export function generateExpenses(db: DB, ctx: Context, month: string) {
+export async function generateExpenses(db: DB, ctx: Context, month: string) {
   requireAdmin(ctx);
-  return transaction(db, () => {
+  return await transaction(db, async () => {
     let created = 0;
-    const templates = db
+    const templates = await db
       .prepare("SELECT * FROM expense_templates WHERE tenant_id=? AND active=1")
       .all(ctx.tenantId);
     for (const t of templates) {
       if (t.amount === null || Number(t.amount) <= 0) continue;
       if (!t.start_month)
-        db.prepare(
-          "UPDATE expense_templates SET start_month=? WHERE id=? AND tenant_id=?",
-        ).run(month, t.id, ctx.tenantId);
+        await db
+          .prepare(
+            "UPDATE expense_templates SET start_month=? WHERE id=? AND tenant_id=?",
+          )
+          .run(month, t.id, ctx.tenantId);
       const start = String(t.start_month || month);
       const diff =
         (Number(month.slice(0, 4)) - Number(start.slice(0, 4))) * 12 +
@@ -34,7 +36,7 @@ export function generateExpenses(db: DB, ctx: Context, month: string) {
         month +
         "-" +
         String(Math.min(Number(t.due_day), last)).padStart(2, "0");
-      const result = db
+      const result = await db
         .prepare(
           "INSERT OR IGNORE INTO payables(id,tenant_id,template_id,description,category,amount,due_on,notes) VALUES(?,?,?,?,?,?,?,?)",
         )
@@ -53,11 +55,11 @@ export function generateExpenses(db: DB, ctx: Context, month: string) {
         );
       created += Number(result.changes);
     }
-    audit(db, ctx, "expenses.generated", month);
+    await audit(db, ctx, "expenses.generated", month);
     return { created };
   });
 }
-export function payExpense(
+export async function payExpense(
   db: DB,
   ctx: Context,
   record: string,
@@ -65,12 +67,14 @@ export function payExpense(
   method: string,
 ) {
   requireAdmin(ctx);
-  return transaction(db, () => {
-    const p = scoped(db, "payables", ctx.tenantId, record);
+  return await transaction(db, async () => {
+    const p = await scoped(db, "payables", ctx.tenantId, record);
     if (p.status !== "open") throw new Error("Esta conta não está em aberto.");
-    db.prepare(
-      "UPDATE payables SET status='paid',paid_on=?,method=? WHERE tenant_id=? AND id=?",
-    ).run(paidOn, method, ctx.tenantId, record);
-    audit(db, ctx, "expense.paid", record);
+    await db
+      .prepare(
+        "UPDATE payables SET status='paid',paid_on=?,method=? WHERE tenant_id=? AND id=?",
+      )
+      .run(paidOn, method, ctx.tenantId, record);
+    await audit(db, ctx, "expense.paid", record);
   });
 }
