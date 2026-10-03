@@ -1,7 +1,7 @@
-import { type DB, transaction } from "../db/database";
-import type { Context } from "../auth/session";
-import { requireAdmin } from "./payments";
-import { audit, id, scoped } from "./workshop";
+import { type DB, transaction } from "../db/database.js";
+import type { Context } from "../auth/session.js";
+import { requireAdmin } from "./payments.js";
+import { audit, id, scoped } from "./workshop.js";
 export const serviceNameKey = (name: string) =>
   name
     .normalize("NFD")

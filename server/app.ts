@@ -1,11 +1,11 @@
-import { assertUniqueService } from "./services/serviceCatalog";
-import { generateExpenses, payExpense } from "./services/expenses";
-import { createShare, readShare } from "./services/sharing";
+import { assertUniqueService } from "./services/serviceCatalog.js";
+import { generateExpenses, payExpense } from "./services/expenses.js";
+import { createShare, readShare } from "./services/sharing.js";
 import express from "express";
 import { z } from "zod";
 import { resolve } from "node:path";
-import type { DB } from "./db/database";
-import { transaction } from "./db/database";
+import type { DB } from "./db/database.js";
+import { transaction } from "./db/database.js";
 import {
   auth,
   digest,
@@ -14,7 +14,7 @@ import {
   verifyPassword,
   hashPassword,
   type Context,
-} from "./auth/session";
+} from "./auth/session.js";
 import {
   audit,
   id,
@@ -24,11 +24,11 @@ import {
   scoped,
   settle,
   transitionOrder,
-} from "./services/workshop";
-import { statuses } from "./domain/orders";
-import { configurePlan, settleInstallment } from "./services/payments";
-import { calculatePlan, paymentMethods } from "./domain/payments";
-import { lookupVehicle, providerToken } from "./services/vehicleLookup";
+} from "./services/workshop.js";
+import { statuses } from "./domain/orders.js";
+import { configurePlan, settleInstallment } from "./services/payments.js";
+import { calculatePlan, paymentMethods } from "./domain/payments.js";
+import { lookupVehicle, providerToken } from "./services/vehicleLookup.js";
 const text = z.string().trim().max(500).default("");
 const name = z
   .string()

@@ -1,5 +1,5 @@
-import { fipePlacaToken, lookupFipePlaca } from "./fipePlaca";
-import type { DB } from "../db/database";
+import { fipePlacaToken, lookupFipePlaca } from "./fipePlaca.js";
+import type { DB } from "../db/database.js";
 import { z } from "zod";
 export const normalizePlate = (value: string) =>
   value.toUpperCase().replace(/[^A-Z0-9]/g, "");

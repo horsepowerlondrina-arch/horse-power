@@ -11,8 +11,8 @@ export function Activate() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   return (
-    <main className="loading-screen">
-      <section style={{ maxWidth: 420, width: "100%", padding: 24 }}>
+    <main className="activation-page">
+      <section className="activation-card">
         <img
           src="/brand/horse-power.jpg"
           alt="Horse Power"

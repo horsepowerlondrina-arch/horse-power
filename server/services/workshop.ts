@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { transaction, type DB } from "../db/database";
-import type { Context } from "../auth/session";
-import { assertTransition, totalOf, type Status } from "../domain/orders";
-import { configurePlan, settleInstallment, requireAdmin } from "./payments";
+import { transaction, type DB } from "../db/database.js";
+import type { Context } from "../auth/session.js";
+import { assertTransition, totalOf, type Status } from "../domain/orders.js";
+import { configurePlan, settleInstallment, requireAdmin } from "./payments.js";
 export const id = () => randomUUID();
 export type Row = Record<string, any>;
 export async function scoped(

@@ -1,5 +1,5 @@
-import { createApp } from "./app";
-import { createPostgresDatabase } from "./db/postgres";
+import { createApp } from "./app.js";
+import { createPostgresDatabase } from "./db/postgres.js";
 const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL;
 if (!process.env.APP_ORIGIN && productionHost)
   process.env.APP_ORIGIN = `https://${productionHost}`;

@@ -1,6 +1,6 @@
-import type { DB } from "./database";
-import { hashPassword } from "../auth/session";
-import { saveOrder, transitionOrder, settle } from "../services/workshop";
+import type { DB } from "./database.js";
+import { hashPassword } from "../auth/session.js";
+import { saveOrder, transitionOrder, settle } from "../services/workshop.js";
 export async function seed(db: DB) {
   if (await db.prepare("SELECT 1 FROM import_batches LIMIT 1").get()) return;
   if (await db.prepare("SELECT id FROM users LIMIT 1").get()) {

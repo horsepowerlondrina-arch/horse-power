@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
 import { readFileSync } from "node:fs";
-import type { DB } from "./database";
+import type { DB } from "./database.js";
 
 // Timestamps are text in the legacy contract; bigint aggregates stay exact JS integers.
 pg.types.setTypeParser(20, (value) => {

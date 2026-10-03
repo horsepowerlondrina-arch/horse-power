@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { type DB, transaction } from "../db/database";
-import { digest, type Context } from "../auth/session";
-import { requireAdmin } from "./payments";
-import { scoped, audit } from "./workshop";
+import { type DB, transaction } from "../db/database.js";
+import { digest, type Context } from "../auth/session.js";
+import { requireAdmin } from "./payments.js";
+import { scoped, audit } from "./workshop.js";
 export async function createShare(db: DB, ctx: Context, record: string) {
   requireAdmin(ctx);
   return await transaction(db, async () => {

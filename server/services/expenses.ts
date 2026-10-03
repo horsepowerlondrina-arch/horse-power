@@ -1,7 +1,7 @@
-import { type DB, transaction } from "../db/database";
-import { type Context } from "../auth/session";
-import { audit, id, scoped } from "./workshop";
-import { requireAdmin } from "./payments";
+import { type DB, transaction } from "../db/database.js";
+import { type Context } from "../auth/session.js";
+import { audit, id, scoped } from "./workshop.js";
+import { requireAdmin } from "./payments.js";
 export async function generateExpenses(db: DB, ctx: Context, month: string) {
   requireAdmin(ctx);
   return await transaction(db, async () => {

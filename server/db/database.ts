@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { migrate } from "./migrate";
+import { migrate } from "./migrate.js";
 export function createDatabase(
   path = process.env.DATABASE_PATH || resolve("data/horse-power.sqlite"),
 ) {

@@ -1,7 +1,7 @@
-import { transaction, type DB } from "../db/database";
-import type { Context } from "../auth/session";
-import { calculatePlan, type PaymentInput } from "../domain/payments";
-import { id, scoped, audit } from "./workshop";
+import { transaction, type DB } from "../db/database.js";
+import type { Context } from "../auth/session.js";
+import { calculatePlan, type PaymentInput } from "../domain/payments.js";
+import { id, scoped, audit } from "./workshop.js";
 export function requireAdmin(ctx: Context) {
   if (ctx.role !== "owner")
     throw Object.assign(new Error("Esta ação é exclusiva do administrador."), {

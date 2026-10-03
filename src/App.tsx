@@ -655,8 +655,8 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
             <div>
               <strong>Acesso da oficina</strong>
               <p>
-                Acesso da Horse Power. A configuração definitiva dos usuários
-                será feita na próxima etapa.
+                Acesso exclusivo da Horse Power. Use seu e-mail e sua senha
+                para entrar com segurança.
               </p>
             </div>
           </div>

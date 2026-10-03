@@ -4,7 +4,7 @@ import {
   timingSafeEqual,
   createHash,
 } from "node:crypto";
-import type { DB } from "../db/database";
+import type { DB } from "../db/database.js";
 import type { Request, Response, NextFunction } from "express";
 export type Context = { userId: string; tenantId: string; role: string };
 export function hashPassword(password: string) {

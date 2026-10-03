@@ -7,6 +7,10 @@ export async function api<T = any>(
     ...options,
     headers: { "Content-Type": "application/json", ...options.headers },
   });
+  if (!response.headers.get("content-type")?.includes("application/json"))
+    throw new Error(
+      "O servidor está temporariamente indisponível. Tente novamente em instantes.",
+    );
   const result = await response.json();
   if (!response.ok)
     throw new Error(result.error || "Não foi possível concluir.");

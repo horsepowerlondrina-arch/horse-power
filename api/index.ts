@@ -1,1 +1,1 @@
-export { default } from '../server/cloud';
+export { default } from '../server/cloud.js';
