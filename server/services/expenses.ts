@@ -1,0 +1,76 @@
+import { type DB, transaction } from "../db/database";
+import { type Context } from "../auth/session";
+import { audit, id, scoped } from "./workshop";
+import { requireAdmin } from "./payments";
+export function generateExpenses(db: DB, ctx: Context, month: string) {
+  requireAdmin(ctx);
+  return transaction(db, () => {
+    let created = 0;
+    const templates = db
+      .prepare("SELECT * FROM expense_templates WHERE tenant_id=? AND active=1")
+      .all(ctx.tenantId);
+    for (const t of templates) {
+      if (t.amount === null || Number(t.amount) <= 0) continue;
+      if (!t.start_month)
+        db.prepare(
+          "UPDATE expense_templates SET start_month=? WHERE id=? AND tenant_id=?",
+        ).run(month, t.id, ctx.tenantId);
+      const start = String(t.start_month || month);
+      const diff =
+        (Number(month.slice(0, 4)) - Number(start.slice(0, 4))) * 12 +
+        Number(month.slice(5)) -
+        Number(start.slice(5));
+      if (
+        diff < 0 ||
+        (t.remaining_months !== null && diff >= Number(t.remaining_months))
+      )
+        continue;
+      const last = new Date(
+        Number(month.slice(0, 4)),
+        Number(month.slice(5)),
+        0,
+      ).getDate();
+      const due =
+        month +
+        "-" +
+        String(Math.min(Number(t.due_day), last)).padStart(2, "0");
+      const result = db
+        .prepare(
+          "INSERT OR IGNORE INTO payables(id,tenant_id,template_id,description,category,amount,due_on,notes) VALUES(?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          id(),
+          ctx.tenantId,
+          t.id,
+          String(t.description) +
+            (t.remaining_months
+              ? ` · parcela ${diff + 1}/${t.remaining_months}`
+              : ""),
+          t.category,
+          t.amount,
+          due,
+          t.source,
+        );
+      created += Number(result.changes);
+    }
+    audit(db, ctx, "expenses.generated", month);
+    return { created };
+  });
+}
+export function payExpense(
+  db: DB,
+  ctx: Context,
+  record: string,
+  paidOn: string,
+  method: string,
+) {
+  requireAdmin(ctx);
+  return transaction(db, () => {
+    const p = scoped(db, "payables", ctx.tenantId, record);
+    if (p.status !== "open") throw new Error("Esta conta não está em aberto.");
+    db.prepare(
+      "UPDATE payables SET status='paid',paid_on=?,method=? WHERE tenant_id=? AND id=?",
+    ).run(paidOn, method, ctx.tenantId, record);
+    audit(db, ctx, "expense.paid", record);
+  });
+}

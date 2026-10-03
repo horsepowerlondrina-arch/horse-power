@@ -1,0 +1,19 @@
+node_modules/
+dist/
+data/
+.env
+*.log
+
+tmp/
+Backup Minha Oficina/
+Gastos Oficina.xlsx
+
+.env.*
+!.env.example
+.vercel/
+.DS_Store
+Imagens minha oficina/
+Logo Horse Power/
+*.pdf
+*.xlsx
+*.sqlite*
