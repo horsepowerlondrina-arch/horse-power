@@ -147,7 +147,7 @@ button:hover:not(:disabled) {
   top: 0;
   bottom: 0;
   z-index: 30;
-  padding: 30px 17px 0;
+  padding: 18px 17px 0;
   overflow: auto;
 }
 .brand {
@@ -193,7 +193,7 @@ button:hover:not(:disabled) {
   color: var(--red);
 }
 .workspace-switcher {
-  margin: 29px 1px 21px;
+  margin: 12px 1px 14px;
   border: 1px solid var(--border);
   border-radius: 9px;
   display: flex;
@@ -2830,10 +2830,10 @@ body {
   border-radius: 8px;
 }
 .sidebar .brand {
-  padding: 12px;
+  padding: 4px 12px;
   background: #fff;
   border-radius: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 .login-official-logo {
   width: min(360px, 100%);
