@@ -3118,3 +3118,426 @@ body {
     padding: 24px;
   }
 }
+
+/* Horse Power cinematic access screen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.hp-login {
+  min-height: 100dvh;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  padding: 38px 24px 28px;
+  background: #08090b;
+  color: #eee;
+  overflow: hidden;
+}
+.hp-login-scenery {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(180deg, #0003 0%, #0003 45%, #050506e8 100%),
+    url("/brand/login-workshop.png") center / cover no-repeat;
+}
+.hp-login::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    90deg,
+    #0004,
+    transparent 25%,
+    transparent 78%,
+    #0005
+  );
+  pointer-events: none;
+}
+.hp-login-center {
+  width: min(100%, 440px);
+  z-index: 1;
+}
+.hp-login-card {
+  position: relative;
+  padding: 25px 38px 28px;
+  border: 1px solid transparent;
+  border-radius: 30px;
+  background:
+    radial-gradient(ellipse at top left, #66101445, transparent 35%) padding-box,
+    linear-gradient(130deg, #ee1426 0%, #383838 16%, #252525 77%, #fd182a 100%)
+      border-box;
+  box-shadow: 0 25px 90px #000b;
+  isolation: isolate;
+}
+.hp-login-card::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 29px;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 0 0, #4b0c1050, transparent 37%),
+    radial-gradient(ellipse at 100% 100%, #4b0c1040, transparent 35%),
+    linear-gradient(135deg, #101112f5, #050506f5 65%, #121113f5);
+}
+.hp-login-logo {
+  width: 100%;
+  height: 225px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hp-login-logo img {
+  width: 100%;
+  height: auto;
+  max-width: 338px;
+  filter: invert(1) hue-rotate(180deg) saturate(1.7);
+  mix-blend-mode: screen;
+}
+.hp-login-card h1 {
+  text-align: center;
+  border-top: 1px solid #b31c2780;
+  padding-top: 22px;
+  margin: 7px 0 30px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 3.4px;
+  color: #c5c5ca;
+  line-height: 1.6;
+}
+.hp-login-card form {
+  display: grid;
+  gap: 12px;
+}
+.hp-login-field {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #4a4a4c;
+  border-radius: 9px;
+  padding: 0 16px;
+  min-height: 56px;
+  background: linear-gradient(115deg, #202021a3, #111113d4);
+  color: #ddd;
+  box-shadow: inset 0 1px #ffffff08;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+.hp-login-field:focus-within {
+  border-color: #ee3343;
+  box-shadow: 0 0 0 3px #ef203b20;
+}
+.hp-login-field input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  padding: 16px 0;
+  background: transparent;
+  color: #fafafa;
+  font-size: 14px;
+}
+.hp-login-field input:focus {
+  box-shadow: none;
+  border: 0;
+  outline: 0;
+}
+.hp-login-field input::placeholder {
+  color: #99999f;
+}
+.hp-login-field input:-webkit-autofill {
+  -webkit-text-fill-color: #fff;
+  -webkit-box-shadow: 0 0 0 100px #19191b inset;
+  caret-color: #fff;
+}
+.hp-login-field > svg {
+  flex-shrink: 0;
+  stroke-width: 1.5;
+}
+.hp-login-reveal {
+  border: 0;
+  background: transparent;
+  color: #bdbdc3;
+  padding: 10px 0 10px 8px;
+  display: flex;
+  cursor: pointer;
+}
+.hp-login-reveal:hover {
+  color: white;
+}
+.hp-login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0 12px;
+  font-size: 11px;
+  color: #c6c6ca;
+}
+.hp-login-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.hp-login-options input {
+  width: 16px;
+  height: 16px;
+  accent-color: #ef1323;
+  margin: 0;
+  color-scheme: dark;
+}
+.hp-login-options > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #99999f;
+  font-size: 10px;
+}
+.hp-login-submit {
+  min-height: 56px;
+  border: 1px solid #f72535;
+  border-radius: 9px;
+  background: linear-gradient(125deg, #f30718, #c80010);
+  box-shadow: 0 5px 24px #c8001026;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  transition:
+    filter 0.2s,
+    transform 0.2s;
+}
+.hp-login-submit > svg:last-child:not(.spin) {
+  position: absolute;
+  right: 20px;
+}
+.hp-login-submit:hover:not(:disabled) {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+}
+.hp-login-submit:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.hp-login button:focus-visible,
+.hp-login input[type="checkbox"]:focus-visible {
+  outline: 2px solid #ff626e;
+  outline-offset: 4px;
+}
+.hp-login-error {
+  color: #ffc6cc;
+  background: #6e15233d;
+  border: 1px solid #8f2835;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.hp-login-location {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  margin-top: 28px;
+}
+.hp-login-location i {
+  flex: 1;
+  height: 1px;
+  background: #ffffff35;
+}
+.hp-login-location p {
+  margin: 0;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: #c0c0c5;
+  font-size: 10px;
+}
+.hp-login-location span {
+  display: block;
+  font-size: 8px;
+  letter-spacing: 2.7px;
+  margin-top: 7px;
+  color: #88888f;
+}
+.hp-login-benefits {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 27px -15px 0;
+  color: #ddd;
+}
+.hp-login-benefits div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border-right: 1px solid #ffffff25;
+}
+.hp-login-benefits div:last-child {
+  border: 0;
+}
+.hp-login-benefits span {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+}
+.hp-login-manifesto {
+  position: absolute;
+  top: 23%;
+  left: 6%;
+  font-size: clamp(17px, 2vw, 28px);
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.4;
+  letter-spacing: 2px;
+  color: #d3d3d394;
+}
+.hp-login-manifesto span {
+  color: #eee;
+}
+.hp-login-manifesto i,
+.hp-login-signoff i {
+  display: block;
+  width: 30px;
+  height: 4px;
+  background: #d70c1a;
+  margin-top: 20px;
+}
+.hp-login-values {
+  position: absolute;
+  right: 6%;
+  top: 13%;
+  font-size: 11px;
+  line-height: 2.5;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: #cacacd;
+}
+.hp-login-values span {
+  display: block;
+  margin-top: 8px;
+  color: #929298;
+  font-size: 9px;
+}
+.hp-login-signoff {
+  position: absolute;
+  bottom: 35px;
+  right: 5%;
+  font-size: 9px;
+  line-height: 2;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #ababaf;
+}
+@media (min-height: 900px) {
+  .hp-login {
+    padding-top: 60px;
+    padding-bottom: 45px;
+  }
+  .hp-login-card {
+    padding-top: 34px;
+    padding-bottom: 36px;
+  }
+  .hp-login-logo {
+    height: 260px;
+  }
+  .hp-login-card h1 {
+    margin-bottom: 38px;
+  }
+  .hp-login-benefits {
+    margin-top: 40px;
+  }
+}
+@media (max-width: 900px) {
+  .hp-login-manifesto,
+  .hp-login-values {
+    display: none;
+  }
+  .hp-login-signoff {
+    display: none;
+  }
+  .hp-login-scenery {
+    background-position: 65% center;
+  }
+}
+@media (max-width: 480px) {
+  .hp-login {
+    padding: 24px 18px;
+  }
+  .hp-login-card {
+    padding: 20px 25px 26px;
+    border-radius: 24px;
+  }
+  .hp-login-card::before {
+    border-radius: 23px;
+  }
+  .hp-login-logo {
+    height: 210px;
+  }
+  .hp-login-card h1 {
+    font-size: 9px;
+    letter-spacing: 2.5px;
+    margin-bottom: 26px;
+  }
+  .hp-login-benefits {
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .hp-login-benefits span {
+    font-size: 7px;
+    letter-spacing: 0.7px;
+  }
+  .hp-login-options {
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hp-login * {
+    transition: none !important;
+  }
+}
+
+.hp-login-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  max-width: none;
+  filter: invert(1) hue-rotate(180deg) saturate(6);
+}
+.hp-login-logo {
+  height: 215px;
+}
+.hp-login-field input {
+  min-height: 0;
+}
+@media (min-height: 900px) {
+  .hp-login-logo {
+    height: 260px;
+  }
+}
+@media (max-width: 480px) {
+  .hp-login-logo {
+    height: 210px;
+  }
+}
