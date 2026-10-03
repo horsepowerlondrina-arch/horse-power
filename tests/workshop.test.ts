@@ -750,3 +750,38 @@ test("API cadastra cliente e veículo atomicamente e limita o mecânico à opera
     db.close();
   }
 });
+
+test("produção permite login e saída nos domínios configurados e bloqueia outras origens", async () => {
+  const previous = { NODE_ENV: process.env.NODE_ENV, APP_ORIGIN: process.env.APP_ORIGIN, APP_ORIGINS: process.env.APP_ORIGINS };
+  process.env.NODE_ENV = "production";
+  process.env.APP_ORIGIN = "https://horse-power.vercel.app";
+  process.env.APP_ORIGINS = "https://horse-power.vercel.app,https://oficinahorsepower.com.br";
+  const db = fixture();
+  const server = createApp(db).listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api`;
+  try {
+    for (const origin of process.env.APP_ORIGINS.split(",")) {
+      const login = await fetch(`${base}/login`, {
+        method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "test@example.com", password: "password-test" }),
+      });
+      assert.equal(login.status, 200);
+      const cookie = login.headers.get("set-cookie")!.split(";")[0];
+      const logout = await fetch(`${base}/logout`, { method: "POST", headers: { Origin: origin, Cookie: cookie } });
+      assert.equal(logout.status, 200);
+      assert.equal((await fetch(`${base}/session`, { headers: { Cookie: cookie } })).status, 401);
+    }
+    for (const origin of ["https://evil.example", "https://oficinahorsepower.com.br.evil.example", "http://oficinahorsepower.com.br", "null"]) {
+      for (const path of ["login", "logout"]) {
+        assert.equal((await fetch(`${base}/${path}`, { method: "POST", headers: { Origin: origin } })).status, 403);
+      }
+    }
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    db.close();
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});

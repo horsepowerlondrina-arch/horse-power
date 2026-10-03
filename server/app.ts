@@ -145,7 +145,9 @@ export function createApp(db: DB) {
       }
       const valid =
         process.env.NODE_ENV === "production"
-          ? origin.origin === process.env.APP_ORIGIN
+          ? [process.env.APP_ORIGIN, ...(process.env.APP_ORIGINS || "").split(",")]
+              .map((value) => value?.trim())
+              .includes(origin.origin)
           : [
               "http://127.0.0.1:5173",
               "http://localhost:5173",

@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
+  "env": {
+    "APP_ORIGINS": "https://horse-power.vercel.app,https://oficinahorsepower.com.br"
+  },
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "regions": [
