@@ -1764,6 +1764,14 @@ td strong {
   color: #8a97a8;
   font-size: 13px;
 }
+.loading-logo {
+  width: min(320px, 75vw);
+  height: auto;
+  mix-blend-mode: multiply;
+}
+.loading-spinner {
+  color: var(--red);
+}
 .spin {
   animation: spin 1s linear infinite;
 }

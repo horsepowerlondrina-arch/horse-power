@@ -104,11 +104,16 @@ export function App() {
   }, []);
   if (loading)
     return (
-      <div className="loading-screen">
-        <div className="brand-mark">
-          H<span>P</span>
-        </div>
-        <LoaderCircle className="spin" />
+      <div className="loading-screen" role="status" aria-live="polite">
+        <img
+          className="loading-logo"
+          src="/brand/horse-power.jpg"
+          alt="Horse Power Car Service"
+          width="3000"
+          height="1356"
+          fetchPriority="high"
+        />
+        <LoaderCircle className="spin loading-spinner" aria-hidden="true" />
         <p>Preparando sua oficina...</p>
       </div>
     );
