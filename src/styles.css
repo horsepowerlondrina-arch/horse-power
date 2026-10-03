@@ -3402,43 +3402,12 @@ body {
   text-transform: uppercase;
   letter-spacing: 1.4px;
 }
-.hp-login-manifesto {
-  position: absolute;
-  top: 23%;
-  left: 6%;
-  font-size: clamp(17px, 2vw, 28px);
-  font-weight: 700;
-  text-transform: uppercase;
-  line-height: 1.4;
-  letter-spacing: 2px;
-  color: #d3d3d394;
-}
-.hp-login-manifesto span {
-  color: #eee;
-}
-.hp-login-manifesto i,
 .hp-login-signoff i {
   display: block;
   width: 30px;
   height: 4px;
   background: #d70c1a;
   margin-top: 20px;
-}
-.hp-login-values {
-  position: absolute;
-  right: 6%;
-  top: 13%;
-  font-size: 11px;
-  line-height: 2.5;
-  text-transform: uppercase;
-  letter-spacing: 3px;
-  color: #cacacd;
-}
-.hp-login-values span {
-  display: block;
-  margin-top: 8px;
-  color: #929298;
-  font-size: 9px;
 }
 .hp-login-signoff {
   position: absolute;
@@ -3470,10 +3439,6 @@ body {
   }
 }
 @media (max-width: 900px) {
-  .hp-login-manifesto,
-  .hp-login-values {
-    display: none;
-  }
   .hp-login-signoff {
     display: none;
   }

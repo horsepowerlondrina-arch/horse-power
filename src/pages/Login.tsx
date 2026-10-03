@@ -53,25 +53,6 @@ export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   return (
     <main className="hp-login">
       <div className="hp-login-scenery" aria-hidden="true" />
-      <aside className="hp-login-manifesto" aria-hidden="true">
-        Mais que
-        <br />
-        mecânica,
-        <br />
-        <span>confiança</span>
-        <br />
-        em cada km.
-        <i />
-      </aside>
-      <aside className="hp-login-values" aria-hidden="true">
-        Diagnóstico
-        <br />
-        Manutenção
-        <br />
-        Performance
-        <br />
-        Segurança<span>Sempre com você</span>
-      </aside>
       <div className="hp-login-center">
         <section className="hp-login-card" aria-label="Acesso Horse Power">
           <div className="hp-login-logo">
