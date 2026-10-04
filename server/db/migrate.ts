@@ -7,6 +7,7 @@ export function migrate(db: DatabaseSync) {
     [4, "004-expense-month.sql"],
     [5, "005-service-consolidation.sql"],
     [6, "006-cloud-access.sql"],
+    [7, "007-extension.sql"],
   ] as const) {
     if (db.prepare("SELECT 1 FROM migrations WHERE version=?").get(version))
       continue;

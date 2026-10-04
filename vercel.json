@@ -22,7 +22,7 @@
       "destination": "/api"
     },
     {
-      "source": "/((?!api/|assets/|brand/|favicon).*)",
+      "source": "/((?!api/|assets/|brand/|downloads/|favicon).*)",
       "destination": "/index.html"
     }
   ],

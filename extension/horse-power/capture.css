@@ -1,0 +1,136 @@
+.hp-sky-btn {
+  background: #c8202c !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  padding: 7px 10px !important;
+  margin: 4px 4px 4px 6px !important;
+  font:
+    700 12px Arial,
+    sans-serif !important;
+  cursor: pointer !important;
+  display: inline-block !important;
+  text-decoration: none !important;
+  line-height: 1.2 !important;
+}
+.hp-sky-btn:hover {
+  filter: brightness(0.92);
+}
+.hp-sky-btn.hp-added {
+  background: #166534 !important;
+}
+#hp-sky-float {
+  position: fixed;
+  right: 16px;
+  bottom: 18px;
+  z-index: 2147483646;
+  background: #fff;
+  border: 1px solid #b8c4cf;
+  border-radius: 10px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.18);
+  padding: 9px 10px;
+  font:
+    12px Arial,
+    sans-serif;
+  color: #17212b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#hp-sky-float button {
+  background: #c8202c;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+#hp-sky-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 76px;
+  z-index: 2147483647;
+  background: #166534;
+  color: #fff;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font:
+    700 12px Arial,
+    sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transition: 0.2s;
+  pointer-events: none;
+}
+#hp-sky-toast.show {
+  opacity: 1;
+}
+.hp-tempario-btn {
+  background: #c8202c !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  padding: 5px 8px !important;
+  margin: 0 6px !important;
+  font:
+    700 11px Arial,
+    sans-serif !important;
+  cursor: pointer !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 110px !important;
+  white-space: nowrap !important;
+}
+.hp-tempario-btn.hp-added {
+  background: #166534 !important;
+}
+#hp-tempario-float {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483646;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.18);
+  padding: 9px 10px;
+  font:
+    12px Arial,
+    sans-serif;
+  color: #17212b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#hp-tempario-float button {
+  background: #c8202c;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+#hp-tempario-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 76px;
+  z-index: 2147483647;
+  background: #166534;
+  color: #fff;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font:
+    700 12px Arial,
+    sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transition: 0.2s;
+  pointer-events: none;
+}
+#hp-tempario-toast.show {
+  opacity: 1;
+}

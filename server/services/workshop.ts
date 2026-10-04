@@ -47,7 +47,7 @@ export async function listOrders(db: DB, tenant: string): Promise<Row[]> {
     .all(tenant);
   const items = await db
     .prepare(
-      "SELECT i.*,p.name professional_name FROM order_items i LEFT JOIN professionals p ON p.id=i.professional_id AND p.tenant_id=i.tenant_id WHERE i.tenant_id=?",
+      "SELECT i.*,p.name professional_name,e.duration_seconds,e.source capture_source,e.vehicle_label FROM order_items i LEFT JOIN professionals p ON p.id=i.professional_id AND p.tenant_id=i.tenant_id LEFT JOIN external_captures e ON e.item_id=i.id AND e.tenant_id=i.tenant_id WHERE i.tenant_id=?",
     )
     .all(tenant);
   const byOrder = new Map<string, Row[]>();

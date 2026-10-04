@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Horse Power · Conector",
+  "version": "1.0.0",
+  "description": "Envie peças do Sky e serviços do Tempario ao orçamento da Horse Power.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://horse-power.vercel.app/*",
+    "https://oficinahorsepower.com.br/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["https://cliente.skypecas.com.br/*"],
+      "js": ["transport.js", "sky.js"],
+      "css": ["capture.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://sistema.tempar.io/*"],
+      "js": ["transport.js", "tempario.js"],
+      "css": ["capture.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://horse-power.vercel.app/*",
+        "https://oficinahorsepower.com.br/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

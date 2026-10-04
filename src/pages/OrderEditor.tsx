@@ -1,3 +1,4 @@
+import { CapturePanel } from "../components/CapturePanel";
 import { CatalogPicker } from "../components/CatalogPicker";
 import { useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
@@ -66,9 +67,19 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     discount: order?.discount || 0,
     items: (order?.items || []) as Entity[],
   });
+  const editorLocation = useLocation();
+  const initialCapture = new URLSearchParams(editorLocation.search).get(
+    "capturar",
+  );
+  const [savedId, setSavedId] = useState<string | undefined>(order?.id);
+  const [captureSource, setCaptureSource] = useState<"sky" | "tempario" | null>(
+    initialCapture === "sky" || initialCapture === "tempario"
+      ? initialCapture
+      : null,
+  );
   const [lookupPlate, setLookupPlate] = useState("");
   const [lookedUp, setLookedUp] = useState<Record<string, any>>({});
-  const [tab, setTab] = useState("details");
+  const [tab, setTab] = useState(initialCapture ? "items" : "details");
   const [itemKind, setItemKind] = useState("product");
   const [pick, setPick] = useState("");
   const [error, setError] = useState("");
@@ -131,13 +142,35 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     setError("");
     try {
       const result = await send(
-        `/orders${order ? `/${order.id}` : ""}`,
+        `/orders${savedId ? `/${savedId}` : ""}`,
         { ...form, status: form.status === "quote" ? "quote" : "open" },
-        order ? "PUT" : "POST",
+        savedId ? "PUT" : "POST",
       );
       await refresh();
       notify("Atendimento salvo com sucesso.");
       navigate(`/ordens/${result.id}`, { replace: true });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const startCapture = async (source: "sky" | "tempario") => {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await send(
+        `/orders${savedId ? `/${savedId}` : ""}`,
+        { ...form, status: "quote" },
+        savedId ? "PUT" : "POST",
+      );
+      setSavedId(result.id);
+      await refresh();
+      if (!order)
+        navigate(`/ordens/${result.id}/editar?capturar=${source}`, {
+          replace: true,
+        });
+      else setCaptureSource(source);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -524,6 +557,28 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                 </>
               ) : tab === "items" ? (
                 <>
+                  {!locked && form.status === "quote" && (
+                    <div className="capture-actions">
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={busy}
+                        onClick={() => void startCapture("sky")}
+                      >
+                        <Package size={17} />
+                        Adicionar produto · Sky Peças
+                      </button>
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={busy}
+                        onClick={() => void startCapture("tempario")}
+                      >
+                        <Wrench size={17} />
+                        Adicionar serviço · Tempario
+                      </button>
+                    </div>
+                  )}
                   <div className="tabs">
                     {[
                       ["product", "Produtos"],
@@ -603,6 +658,9 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                                     {item.kind === "service"
                                       ? "Serviço"
                                       : "Produto"}
+                                    {item.duration_seconds
+                                      ? ` · ${Math.round(item.duration_seconds / 60)} min`
+                                      : ""}
                                   </small>
                                 </div>
                                 {!locked && (
@@ -802,6 +860,19 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
           )}
         </aside>
       </div>
+      {captureSource && savedId && (
+        <CapturePanel
+          orderId={savedId}
+          source={captureSource}
+          onClose={async (items) => {
+            setForm((f) => ({ ...f, items }));
+            await refresh();
+            setCaptureSource(null);
+            navigate(editorLocation.pathname, { replace: true });
+            notify("Captura salva. Confira os itens e os preços do orçamento.");
+          }}
+        />
+      )}
       {quickCreate && (
         <RegisterModal
           kind={quickCreate}

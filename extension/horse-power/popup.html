@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+  <meta charset="utf-8" /><title>Horse Power · Conector</title
+  ><style>
+    body {
+      width: 290px;
+      padding: 18px;
+      margin: 0;
+      font: 14px system-ui;
+      color: #24242a;
+      background: #fafafa;
+    }
+    h1 {
+      font-size: 18px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-top: 8px;
+      cursor: pointer;
+      background: white;
+    }
+    button:first-of-type {
+      background: #c8202c;
+      color: white;
+      border: 0;
+    }
+    p {
+      line-height: 1.5;
+    }
+    #error {
+      color: #b41420;
+    }
+  </style>
+  <h1>Horse Power</h1>
+  <p id="status">Conectando…</p>
+  <button id="open">Abrir Horse Power</button
+  ><button id="retry">Tentar envios pendentes</button
+  ><button id="clear">Descartar pendentes</button>
+  <p id="error" role="alert"></p>
+  <script src="popup.js"></script>
+</html>

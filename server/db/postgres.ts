@@ -46,6 +46,10 @@ export function postgresSql(input: string) {
     "service_merge_history",
     "admin_setup",
     "login_attempts",
+    "capture_sessions",
+    "external_catalog_links",
+    "external_captures",
+    "service_times",
   ]);
   sql = sql.replace(
     /'(?:''|[^'])*'|\b(FROM|JOIN|UPDATE|INTO|TABLE)\s+("?[a-z_]+"?)/gi,

@@ -1,3 +1,9 @@
+import {
+  beginCapture,
+  captureState,
+  finishCapture,
+  importCapture,
+} from "./services/extension.js";
 import { assertUniqueService } from "./services/serviceCatalog.js";
 import { generateExpenses, payExpense } from "./services/expenses.js";
 import { createShare, readShare } from "./services/sharing.js";
@@ -143,9 +149,16 @@ export function createApp(db: DB) {
         res.status(403).json({ error: "Origem inválida." });
         return;
       }
+      const extensionRequest =
+        req.path === "/extension/import" &&
+        /^chrome-extension:\/\/[a-p]{32}$/.test(req.headers.origin);
       const valid =
-        process.env.NODE_ENV === "production"
-          ? [process.env.APP_ORIGIN, ...(process.env.APP_ORIGINS || "").split(",")]
+        extensionRequest ||
+        (process.env.NODE_ENV === "production"
+          ? [
+              process.env.APP_ORIGIN,
+              ...(process.env.APP_ORIGINS || "").split(","),
+            ]
               .map((value) => value?.trim())
               .includes(origin.origin)
           : [
@@ -153,7 +166,7 @@ export function createApp(db: DB) {
               "http://localhost:5173",
               "http://127.0.0.1:3001",
               "http://localhost:3001",
-            ].includes(origin.origin);
+            ].includes(origin.origin));
       if (!valid) {
         res.status(403).json({ error: "Origem não autorizada." });
         return;
@@ -247,6 +260,10 @@ export function createApp(db: DB) {
       return;
     }
     res.json(result);
+  });
+  app.post("/api/extension/import", async (req, res) => {
+    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
+    res.json(await importCapture(db, token, req.body));
   });
   app.use("/api", auth(db));
   app.get("/api/session", async (_req, res) => {
@@ -477,6 +494,37 @@ export function createApp(db: DB) {
       .run(v.amount, v.due_day, v.active, ctx.tenantId, p.id);
     await audit(db, ctx, "expense_template.updated", p.id);
     res.json({ ok: true });
+  });
+  app.post("/api/orders/:id/capture-session", async (req, res) => {
+    res.json(
+      await beginCapture(
+        db,
+        res.locals.context,
+        String(req.params.id),
+        tokenFrom(req),
+      ),
+    );
+  });
+  app.get("/api/orders/:id/capture-state", async (req, res) => {
+    res.json(await captureState(db, res.locals.context, String(req.params.id)));
+  });
+  app.post("/api/orders/:id/end-capture", async (req, res) => {
+    res.json(
+      await finishCapture(db, res.locals.context, String(req.params.id)),
+    );
+  });
+  app.get("/api/service-times", async (_req, res) => {
+    if (res.locals.context.role !== "owner") {
+      res.status(403).json({ error: "Acesso restrito ao administrador." });
+      return;
+    }
+    res.json(
+      await db
+        .prepare(
+          "SELECT t.*,c.name catalog_name FROM service_times t JOIN catalog c ON c.id=t.catalog_id AND c.tenant_id=t.tenant_id WHERE t.tenant_id=? ORDER BY t.captured_at DESC LIMIT 2000",
+        )
+        .all(res.locals.context.tenantId),
+    );
   });
   app.post("/api/orders/:id/share", async (req, res) =>
     res.json({

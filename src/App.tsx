@@ -1,3 +1,4 @@
+import { ServiceTimes } from "./pages/ServiceTimes";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Expenses, FinanceNav } from "./pages/Expenses";
@@ -151,6 +152,7 @@ export function App() {
         ["/veiculos", "Veículos", CarFront],
         ["/catalogo", "Produtos e serviços", Package],
         ["/profissionais", "Profissionais", Wrench],
+        ["/tempos", "Tempos de serviço", Wrench],
       ],
     },
     {
@@ -406,6 +408,7 @@ export function App() {
                   path="/profissionais"
                   element={<Registers kind="professionals" />}
                 />
+                <Route path="/tempos" element={<ServiceTimes />} />
                 <Route path="/estoque" element={<Stock />} />
                 <Route path="/financeiro" element={<Expenses />} />
                 <Route

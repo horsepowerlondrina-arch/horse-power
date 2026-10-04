@@ -1,0 +1,42 @@
+HORSE POWER · CONECTOR 1.0
+
+1. Extraia este ZIP em uma pasta permanente.
+2. No Chrome, abra chrome://extensions e ative o Modo do desenvolvedor.
+3. Clique em Carregar sem compactação e selecione esta pasta.
+4. Desative a extensão antiga para não duplicar os botões dos fornecedores.
+5. Recarregue Horse Power, Sky Peças e Tempario.
+
+COMO USAR
+- Acesse https://horse-power.vercel.app e entre como administrador.
+- Abra um orçamento em elaboração, entre em Editar > Produtos e serviços.
+- Clique em Adicionar produto · Sky Peças ou Adicionar serviço · Tempario.
+  O orçamento e as alterações atuais serão salvos antes de conectar.
+- Clique em Conectar extensão. A conexão identifica o orçamento de destino.
+- Abra o fornecedor, entre na sua conta e clique em HP • Enviar em cada item.
+- Cada envio é salvo no orçamento e no catálogo da Horse Power. Os tempos do
+  Tempario são guardados com marca, modelo e ano disponíveis na captura.
+- Volte ao orçamento e clique em Concluir captura. Confira preços e quantidades.
+- Em Tempos de serviço, consulte as referências que já foram coletadas.
+
+CONEXÃO E ENVIO
+A conexão dura até 30 minutos e deixa de funcionar ao sair da conta, encerrar
+ou cancelar/aprovar o orçamento. Somente um destino fica ativo na extensão.
+O token fica na memória da sessão do Chrome, não contém sua senha e só autoriza
+adicionar itens ao orçamento escolhido. O banco nunca é acessado pela extensão.
+Se houver falha, abra o ícone da extensão e use Tentar envios pendentes.
+Depois de reconectar o mesmo orçamento, os pendentes podem ser reenviados.
+Ao trocar de orçamento, pendentes antigos não são enviados ao novo destino.
+
+PREÇOS E TEMPOS
+Peças recebem a sugestão da extensão original: acréscimos de 80%, 60%, 50%,
+45%, 40%, 35% ou 30% por faixa de custo, com mínimos nas primeiras faixas.
+O frete não é capturado nesta versão. Ajuste o custo/preço quando necessário.
+Serviços preservam o valor total exibido no Tempario e guardam a duração em segundos.
+As capturas não alteram automaticamente preços já existentes no catálogo.
+Cliques repetidos no mesmo item não multiplicam a quantidade; edite-a no orçamento.
+Estoque Sky é disponibilidade do fornecedor, não entrada de estoque na oficina.
+Para finalizar uma OS com produtos, registre primeiro a entrada física no estoque.
+Custos internos e tempos não são enviados na página pública do cliente.
+
+Os botões leem as telas dos fornecedores; alterações nesses sites podem exigir
+atualização do conector. A conta do fornecedor precisa estar conectada.
