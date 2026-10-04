@@ -55,3 +55,17 @@ A instalação no Chrome e a captura visual nas versões atuais de Sky Peças e 
 Cada captura do Sky representa uma compra. O frete padrão é R$ 17,50 por compra, não por unidade. O valor pode ser alterado enquanto a captura estiver ativa, tanto na Horse Power quanto no painel flutuante do Sky.
 
 O servidor distribui o frete total proporcionalmente ao custo total dos itens enviados na mesma captura (custo unitário × quantidade). Ao adicionar uma nova peça ou alterar o frete, os custos e os preços sugeridos das peças já enviadas nessa mesma captura são recalculados. Ao concluir a captura e abrir outra, começa uma nova compra com o padrão de R$ 17,50.
+
+
+## Revisão antes de concluir a captura
+
+Nas capturas destinadas a orçamento ou OS, itens do Sky Peças e do Tempario ficam em espera em `external_captures` e não entram em `order_items` até a confirmação explícita em **Concluir captura**.
+
+- Peças do Sky permitem alterar a quantidade antes da conclusão. Quantidade zero remove a peça da captura; a lixeira também remove.
+- Serviços do Tempario mantêm quantidade 1 e permitem alterar o tempo em minutos. Ao mudar o tempo, o valor total do serviço é recalculado proporcionalmente à relação valor/tempo capturada no Tempario.
+- O frete total do Sky continua sendo redistribuído proporcionalmente considerando as quantidades revisadas.
+- Fechar a janela pelo **X** descarta todos os itens ainda em espera daquela captura e não altera os itens já existentes no atendimento.
+- **Concluir captura** materializa os itens revisados na OS/orçamento, recalcula o total e revoga a conexão.
+- Alterações digitadas e ainda focadas no campo são sincronizadas antes da conclusão, evitando gravar quantidade ou tempo anterior.
+
+A captura direta para o catálogo continua com o comportamento próprio de cadastro, pois não existe OS/orçamento a confirmar nesse fluxo.
