@@ -52,7 +52,7 @@ export function CapturePanel({
       const extension = await extensionMessage("HP_STATUS");
       if (catalog && !extension.catalogCapture)
         throw new Error(
-          "Atualize o Conector Horse Power para a versão 1.2 e recarregue a página.",
+          "Atualize o Conector Horse Power para a versão 1.3 e recarregue a página.",
         );
       const target = await send(
         catalog

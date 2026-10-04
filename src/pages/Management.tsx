@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Building2,
   Layers3,
+  Download,
 } from "lucide-react";
 import { useApp } from "../lib/context";
 import { send } from "../lib/api";
@@ -686,6 +687,22 @@ export function Settings() {
                 Gestão de convites, edição da empresa e permissões detalhadas
                 serão adicionadas na próxima etapa.
               </p>
+            </section>
+            <section className="panel settings-card">
+              <Download size={23} />
+              <h2>Conector Horse Power 1.3</h2>
+              <p>
+                Envie peças do Sky e serviços do Tempario ao catálogo, orçamento
+                ou OS. Inclui envio da placa aos fornecedores.
+              </p>
+              <a
+                className="button primary"
+                href="/downloads/horse-power-conector.zip"
+                download
+              >
+                <Download size={16} />
+                Baixar extensão do Chrome
+              </a>
             </section>
             <section className="panel settings-card full">
               <Layers3 size={23} />

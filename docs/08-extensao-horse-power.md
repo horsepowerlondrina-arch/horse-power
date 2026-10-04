@@ -10,11 +10,11 @@ O botão HP • Enviar em cada fornecedor envia somente o item selecionado. O wo
 
 O token fica em `chrome.storage.session` acessível apenas aos contextos confiáveis da extensão. A fila persistente contém os itens e destino, sem token. Reenvios conservam o identificador de captura. Pendentes não podem migrar para outro orçamento e podem ser reenviados após reconectar o destino original. As gravações do worker são serializadas.
 
-## Placa automática · versão 1.1
+## Placa automática · versão 1.2
 
-A conexão inclui a placa normalizada do veículo cadastrado; sem vínculo, usa a placa avulsa do orçamento. Placas ausentes ou inválidas não são enviadas. O worker mantém a placa apenas na sessão e a fornece pelo comando `HP_VEHICLE`, limitado à página principal do Tempario e ao popup da própria extensão. O status genérico, acessível ao Sky, não inclui placa nem credencial.
+A conexão inclui a placa normalizada do veículo cadastrado; sem vínculo, usa a placa avulsa do orçamento. Placas ausentes ou inválidas não são enviadas. O worker mantém a placa apenas na sessão e a fornece pelo comando `HP_VEHICLE` somente ao frame principal do Sky Peças, ao frame principal do Tempario e ao popup da própria extensão. O status genérico continua sem incluir placa nem credencial.
 
-O adaptador aguarda o campo visível e editável de placa, inclusive após login ou navegação interna. Em 03/10/2026, o formulário autenticado observado tinha um input `name="plate"`, label `Placa`, placeholder `Buscar por um veículo` e botão `Buscar`. O preenchimento usa o setter nativo e eventos input/change para atualizar o formulário React. Não clica em Buscar nem consulta APIs de placa.
+Os adaptadores aguardam um campo visível e editável identificado como consulta de placa, inclusive após login ou navegação interna. O preenchimento usa o setter nativo e eventos input/change para atualizar formulários controlados pelo navegador/framework. A extensão não clica em Buscar nem consulta APIs de placa. No Sky Peças há uma identificação adicional por contexto quando o rótulo "Placa" fica fora do próprio input.
 
 Há atualização de contexto ao retornar à aba e a cada 2,5 segundos. Cada campo é preenchido uma vez por conexão/placa. Edições manuais são preservadas, com a ação explícita Preencher placa para reaplicar. Campos ambíguos, ocultos, desabilitados e telas de login não são preenchidos. Conexões expiradas ou encerradas deixam de fornecer a placa. O popup permite abrir o Tempario sem incluir placa ou token na URL. Se alterar o veículo no orçamento, encerre a captura e conecte novamente para usar os dados salvos.
 
@@ -22,7 +22,7 @@ Há atualização de contexto ao retornar à aba e a cada 2,5 segundos. Cada cam
 
 ### Catálogo iniciado pela extensão
 
-Cada oficina pode usar `tenants.catalog_mode='extension'`. Nesse modo, novos produtos e serviços entram apenas pelo conector: o cadastro manual é bloqueado no servidor e os botões de criação levam aos orçamentos. Itens já importados podem ser reutilizados, ter seus preços ajustados e receber movimentações de estoque normalmente.
+Cada oficina pode usar `tenants.catalog_mode='extension'` para manter o conector como fluxo principal de importação. A partir da versão atual, esse modo não bloqueia o cadastro manual: produtos e serviços podem ser criados em Cadastros > Produtos e serviços ou diretamente dentro do atendimento, além de continuarem sendo importados pelo Sky Peças e Tempario. Itens já importados podem ser reutilizados, ter seus preços ajustados e receber movimentações de estoque normalmente.
 
 `catalog.archived_at` separa o catálogo anterior do catálogo atual. A limpeza mantém os IDs históricos e os snapshots de nomes, quantidades, custos e preços das OS; não altera clientes, veículos, financeiro ou estoque histórico. Itens arquivados não aparecem nas buscas, nem no filtro Todos, e não podem ser reativados pelo cadastro. Uma OS antiga pode preservar/editar seus próprios itens, mas eles não podem ser adicionados a outro documento. Capturas novas não reutilizam os cadastros arquivados. Os tempos associados ao catálogo anterior também ficam fora da lista atual.
 
@@ -45,6 +45,6 @@ A página pública mantém sua lista explícita de campos, sem custos, fontes ou
 
 Os testes de placa cobrem vínculo ao veículo cadastrado, placa avulsa, normalização, valores inválidos, atualização na reconexão, expiração, origem/frame autorizados e ausência da placa em status/URL.
 
-Verificação no navegador em formulário React com os atributos observados no Tempario: montagem tardia do campo, reconhecimento da placa pelo estado do formulário, preservação da edição manual, reaplicação pelo botão, troca de conexão e desconexão. O contador de consultas permaneceu em zero. O adaptador instalado na página autenticada do fornecedor ainda precisa ser confirmado após atualizar a extensão.
+Os testes automatizados do worker verificam que Sky Peças, Tempario e popup recebem somente o contexto seguro da placa, sem token ou origem interna. O comportamento visual dos adaptadores preserva edição manual e oferece reaplicação pelo botão. A confirmação final dos seletores do Sky Peças ainda depende do navegador autenticado, porque o fornecedor pode alterar o HTML da consulta.
 
 A instalação no Chrome e a captura visual nas versões atuais de Sky Peças e Tempario precisam ser confirmadas no navegador onde o usuário acessa os fornecedores.
