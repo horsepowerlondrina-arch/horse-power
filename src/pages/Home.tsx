@@ -21,10 +21,10 @@ const sections = [
     title: "Atendimento",
     items: [
       {
-        to: "/ordens",
-        title: "Ordens de serviço",
-        description: "Acompanhe os serviços e o andamento de cada veículo.",
-        Icon: ClipboardList,
+        to: "/checklists",
+        title: "Checklists de entrada",
+        description: "Fotos, avarias, acessórios e assinatura vinculados ao veículo.",
+        Icon: ClipboardCheck,
       },
       {
         to: "/orcamentos",
@@ -33,10 +33,10 @@ const sections = [
         Icon: FileText,
       },
       {
-        to: "/checklists",
-        title: "Checklists de entrada",
-        description: "Fotos, avarias, acessórios e assinatura vinculados ao veículo.",
-        Icon: ClipboardCheck,
+        to: "/ordens",
+        title: "Ordens de serviço",
+        description: "Acompanhe os serviços e o andamento de cada veículo.",
+        Icon: ClipboardList,
       },
       {
         to: "/dashboard",
