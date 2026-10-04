@@ -4,10 +4,13 @@ import { randomUUID } from "node:crypto";
 import { createDatabase } from "../server/db/database";
 import {
   beginCapture,
+  captureState,
+  discardCapture,
   importCapture,
   finishCapture,
   suggestedPrice,
   updateCaptureFreight,
+  updateStagedCaptureItem,
 } from "../server/services/extension";
 import { digest } from "../server/auth/session";
 import { saveOrder } from "../server/services/workshop";
@@ -110,13 +113,14 @@ test("Sky freight defaults to one purchase total and is redistributed proportion
         { source_cost: 30000, freight_total: 1312 },
       ],
     );
+    assert.equal(
+      db.prepare("SELECT count(*) n FROM order_items").get()!.n,
+      0,
+    );
     assert.deepEqual(
-      db
-        .prepare(
-          "SELECT cost FROM order_items WHERE kind='product' ORDER BY cost",
-        )
-        .all()
-        .map((r: any) => r.cost),
+      (await captureState(db, ctx, "o")).staged_items
+        .map((r: any) => r.cost)
+        .sort((a: number, b: number) => a - b),
       [10438, 31312],
     );
     await updateCaptureFreight(db, started.token, 2000);
@@ -132,12 +136,9 @@ test("Sky freight defaults to one purchase total and is redistributed proportion
       ],
     );
     assert.deepEqual(
-      db
-        .prepare(
-          "SELECT cost FROM order_items WHERE kind='product' ORDER BY cost",
-        )
-        .all()
-        .map((r: any) => r.cost),
+      (await captureState(db, ctx, "o")).staged_items
+        .map((r: any) => r.cost)
+        .sort((a: number, b: number) => a - b),
       [10500, 31500],
     );
     assert.equal(
@@ -146,6 +147,105 @@ test("Sky freight defaults to one purchase total and is redistributed proportion
         .get(batch)!.freight_total,
       2000,
     );
+  } finally {
+    db.close();
+  }
+});
+
+test("staged Sky items can change quantity, use zero to remove and only enter the order on conclude", async () => {
+  const db = fixture();
+  try {
+    const started = await beginCapture(db, ctx, "o", "session", 0);
+    await importCapture(db, started.token, {
+      ...product(),
+      quantity: 1,
+      capture_id: randomUUID(),
+    });
+    let state = await captureState(db, ctx, "o");
+    assert.equal(state.items.length, 0);
+    assert.equal(state.staged_items.length, 1);
+    const capture = state.staged_items[0];
+    state = await updateStagedCaptureItem(db, ctx, "o", capture.id, {
+      quantity: 4,
+    });
+    assert.equal(state.staged_items[0].quantity, 4);
+    assert.equal(db.prepare("SELECT count(*) n FROM order_items").get()!.n, 0);
+
+    await finishCapture(db, ctx, "o");
+    const saved = db
+      .prepare("SELECT quantity FROM order_items WHERE kind='product'")
+      .get();
+    assert.equal(saved!.quantity, 4);
+
+    const next = await beginCapture(db, ctx, "o", "session", 0);
+    await importCapture(db, next.token, {
+      ...product(),
+      code: "CT200",
+      capture_id: randomUUID(),
+      quantity: 1,
+    });
+    state = await captureState(db, ctx, "o");
+    const removable = state.staged_items[0];
+    state = await updateStagedCaptureItem(db, ctx, "o", removable.id, {
+      quantity: 0,
+    });
+    assert.equal(state.staged_items.length, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test("staged Tempario services edit time instead of quantity and recalculate the captured total proportionally", async () => {
+  const db = fixture();
+  try {
+    const started = await beginCapture(db, ctx, "o", "session", 0);
+    await importCapture(db, started.token, service());
+    let state = await captureState(db, ctx, "o");
+    assert.equal(state.items.length, 0);
+    assert.equal(state.staged_items.length, 1);
+    const capture = state.staged_items[0];
+    assert.equal(capture.duration_seconds, 1500);
+    assert.equal(capture.price, 12345);
+
+    state = await updateStagedCaptureItem(db, ctx, "o", capture.id, {
+      duration_seconds: 1800,
+    });
+    assert.equal(state.staged_items[0].duration_seconds, 1800);
+    assert.equal(state.staged_items[0].price, 14814);
+    assert.equal(db.prepare("SELECT count(*) n FROM order_items").get()!.n, 0);
+
+    const completed = await finishCapture(db, ctx, "o");
+    const saved = completed.items.find((i: any) => i.kind === "service");
+    assert.equal(saved.duration_seconds, 1800);
+    assert.equal(saved.price, 14814);
+    const time = db.prepare("SELECT * FROM service_times").get();
+    assert.equal(time!.duration_seconds, 1800);
+    assert.equal(time!.source_price, 14814);
+  } finally {
+    db.close();
+  }
+});
+
+test("discarding a capture leaves the order untouched and removes staged Sky and Tempario items", async () => {
+  const db = fixture();
+  try {
+    const started = await beginCapture(db, ctx, "o", "session", 0);
+    await importCapture(db, started.token, {
+      ...product(),
+      capture_id: randomUUID(),
+      quantity: 4,
+    });
+    await importCapture(db, started.token, service());
+    assert.equal((await captureState(db, ctx, "o")).staged_items.length, 2);
+    const discarded = await discardCapture(db, ctx, "o");
+    assert.equal(discarded.staged_items.length, 0);
+    assert.equal(discarded.items.length, 0);
+    assert.equal(db.prepare("SELECT count(*) n FROM order_items").get()!.n, 0);
+    assert.equal(
+      db.prepare("SELECT count(*) n FROM external_captures").get()!.n,
+      0,
+    );
+    assert.equal(db.prepare("SELECT count(*) n FROM service_times").get()!.n, 0);
   } finally {
     db.close();
   }
@@ -166,7 +266,7 @@ test("capture saves quote, catalog and vehicle-specific times atomically; retrie
       db.prepare("SELECT count(*) n FROM service_times").get()!.n,
       1,
     );
-    assert.equal(db.prepare("SELECT count(*) n FROM order_items").get()!.n, 1);
+    assert.equal(db.prepare("SELECT count(*) n FROM order_items").get()!.n, 0);
     assert.equal(
       db.prepare("SELECT duration_seconds FROM service_times").get()!
         .duration_seconds,
@@ -176,7 +276,7 @@ test("capture saves quote, catalog and vehicle-specific times atomically; retrie
     await importCapture(db, token, part);
     assert.equal(
       db.prepare("SELECT total FROM orders WHERE id=?").get("o")!.total,
-      42345,
+      0,
     );
     assert.equal(
       db.prepare("SELECT stock FROM catalog WHERE kind='product'").get()!.stock,
@@ -184,6 +284,10 @@ test("capture saves quote, catalog and vehicle-specific times atomically; retrie
     );
     const state = await finishCapture(db, ctx, "o");
     assert.equal(state.items.length, 2);
+    assert.equal(
+      db.prepare("SELECT total FROM orders WHERE id=?").get("o")!.total,
+      42345,
+    );
     await saveOrder(
       db,
       ctx,
