@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   ClipboardList,
+  ClipboardCheck,
   FileText,
   Users,
   CarFront,
@@ -49,6 +50,8 @@ import { OrderEditor } from "./pages/OrderEditor";
 import { Stock, Finance, Settings as SettingsPage } from "./pages/Management";
 import { OrderView } from "./pages/OrderView";
 import { Payment } from "./pages/Payment";
+import { Checklists } from "./pages/Checklists";
+import { ChecklistEditor } from "./pages/ChecklistEditor";
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [data, setData] = useState<Workspace | null>(null);
@@ -152,6 +155,7 @@ export function App() {
         ["/dashboard", "Visão geral", LayoutDashboard],
         ["/ordens", "Ordens de serviço", ClipboardList],
         ["/orcamentos", "Orçamentos", FileText],
+        ["/checklists", "Checklists de entrada", ClipboardCheck],
       ],
     },
     {
@@ -410,6 +414,9 @@ export function App() {
                   element={<Payment key={location.pathname} />}
                 />
                 <Route path="/orcamentos/novo" element={<OrderEditor />} />
+                <Route path="/checklists" element={<Checklists />} />
+                <Route path="/checklists/novo" element={<ChecklistEditor />} />
+                <Route path="/checklists/:id" element={<ChecklistEditor />} />
                 <Route
                   path="/clientes"
                   element={
