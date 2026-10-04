@@ -99,10 +99,12 @@
       }
     }
 
-    // Main selling/purchase price displayed by Sky: prefer R$ x,xx /UN.
+    // Main price displayed by Sky: prefer values followed by the item's
+    // commercial unit (/UN, /JG, /PC, /KIT, /PAR, etc.). This separates the
+    // item price from secondary values such as the tax breakdown.
     let price = 0;
     const unitMatches = [
-      ...raw.matchAll(/R\$\s*([\d.]+,\d{2})\s*\/?\s*UN\.?/gi),
+      ...raw.matchAll(/R\$\s*([\d.]+,\d{2})\s*\/\s*[A-Z]{1,10}\.?/gi),
     ].map((m) => moneyToNumber(m[1]));
     if (unitMatches.length) price = unitMatches[0];
     if (!price) {
