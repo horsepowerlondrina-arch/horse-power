@@ -261,6 +261,18 @@ test("Sky parser rejects ambiguous fallback prices instead of guessing the large
     scope.parseProduct({ innerText: raw + "R$ 10,00 /UN\nR$ 20,00" }).unitCost,
     10,
   );
+  assert.equal(
+    scope.parseProduct({
+      innerText: raw + "R$ 107,44/JG.\nR$ 91,85 + 15,59(Impostos)",
+    }).unitCost,
+    107.44,
+  );
+  assert.equal(
+    scope.parseProduct({
+      innerText: raw + "R$ 89,90/PC\nR$ 80,00 + 9,90(Impostos)",
+    }).unitCost,
+    89.9,
+  );
 });
 
 test("catalog destinations advertise capability and cannot receive pending order captures", async () => {
