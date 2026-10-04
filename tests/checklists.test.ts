@@ -57,6 +57,18 @@ test("checklist vincula OS/veículo, salva fotos e finaliza com assinatura", asy
   try {
     const created = await createChecklist(db, ctx, {
       order_id: "o",
+      plate: "ABC1D23",
+      lookup_source: "local",
+      customer_id: "c",
+      customer_name: "Cliente Teste",
+      phone: "43999999999",
+      vehicle_data: {
+        brand: "Honda",
+        model: "Civic",
+        year: 2022,
+        color: "Prata",
+        chassis: "",
+      },
       km: 12500,
       fuel_level: 50,
       inspector: "Responsável",
@@ -106,11 +118,157 @@ test("checklist vincula OS/veículo, salva fotos e finaliza com assinatura", asy
   }
 });
 
+
+test("placa já cadastrada reaproveita cliente e veículo e abre orçamento ao finalizar", async () => {
+  const db = fixture();
+  try {
+    const created = await createChecklist(db, ctx, {
+      plate: "ABC1D23",
+      lookup_source: "local",
+      customer_id: "c",
+      customer_name: "Cliente Teste",
+      phone: "43999999999",
+      vehicle_data: {
+        brand: "Honda",
+        model: "Civic",
+        year: 2022,
+        color: "Prata",
+        chassis: "",
+      },
+      km: 13000,
+      fuel_level: 50,
+      inspector: "Responsável",
+    });
+    await updateChecklist(db, ctx, created.id, {
+      km: 13000,
+      fuel_level: 50,
+      inspector: "Responsável",
+      complaint: "Revisão geral",
+      conditions: {},
+      accessories_notes: "",
+      panel_lights: {},
+      panel_notes: "",
+      objects_left: "",
+      functioning_notes: "",
+      damages: [],
+      damage_notes: "",
+      signature_data: "",
+      signature_absent_reason: "Cliente não estava presente",
+      customer_confirmed: false,
+    });
+    const completed = await finalizeChecklist(db, ctx, created.id);
+    assert.equal(completed.created_quote, true);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) n FROM customers WHERE tenant_id='t'").get()!.n,
+      1,
+    );
+    assert.equal(
+      db.prepare("SELECT COUNT(*) n FROM vehicles WHERE tenant_id='t'").get()!.n,
+      1,
+    );
+    const quote = db
+      .prepare("SELECT * FROM orders WHERE tenant_id=? AND id=?")
+      .get("t", completed.redirect_order_id)!;
+    assert.equal(quote.kind, "quote");
+    assert.equal(quote.status, "quote");
+    assert.equal(quote.customer_id, "c");
+    assert.equal(quote.vehicle_id, "v");
+    assert.equal(quote.problem, "Revisão geral");
+  } finally {
+    db.close();
+  }
+});
+
+test("placa nova cadastra cliente e veículo somente ao finalizar e abre orçamento", async () => {
+  const db = fixture();
+  try {
+    const created = await createChecklist(db, ctx, {
+      plate: "DEF4G56",
+      lookup_source: "external",
+      customer_id: null,
+      customer_name: "Novo Cliente",
+      phone: "43988887777",
+      vehicle_data: {
+        brand: "Toyota",
+        model: "Corolla",
+        year: 2024,
+        color: "Branco",
+        chassis: "",
+      },
+      km: 2500,
+      fuel_level: 75,
+      inspector: "Responsável",
+    });
+    assert.equal(
+      db.prepare("SELECT COUNT(*) n FROM customers WHERE tenant_id='t'").get()!.n,
+      1,
+    );
+    assert.equal(
+      db.prepare("SELECT COUNT(*) n FROM vehicles WHERE tenant_id='t'").get()!.n,
+      1,
+    );
+    await updateChecklist(db, ctx, created.id, {
+      km: 2500,
+      fuel_level: 75,
+      inspector: "Responsável",
+      complaint: "Barulho ao frear",
+      conditions: {},
+      accessories_notes: "",
+      panel_lights: {},
+      panel_notes: "",
+      objects_left: "",
+      functioning_notes: "",
+      damages: [],
+      damage_notes: "",
+      signature_data: "",
+      signature_absent_reason: "Cliente autorizou sem assinatura",
+      customer_confirmed: false,
+    });
+    const completed = await finalizeChecklist(db, ctx, created.id);
+    assert.equal(completed.created_quote, true);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) n FROM customers WHERE tenant_id='t'").get()!.n,
+      2,
+    );
+    assert.equal(
+      db.prepare("SELECT COUNT(*) n FROM vehicles WHERE tenant_id='t'").get()!.n,
+      2,
+    );
+    const vehicle = db
+      .prepare("SELECT * FROM vehicles WHERE tenant_id=? AND plate=?")
+      .get("t", "DEF4G56")!;
+    const customer = db
+      .prepare("SELECT * FROM customers WHERE tenant_id=? AND id=?")
+      .get("t", vehicle.customer_id)!;
+    assert.equal(customer.name, "Novo Cliente");
+    const quote = db
+      .prepare("SELECT * FROM orders WHERE tenant_id=? AND id=?")
+      .get("t", completed.redirect_order_id)!;
+    assert.equal(quote.kind, "quote");
+    assert.equal(quote.vehicle_id, vehicle.id);
+    assert.equal(quote.customer_id, customer.id);
+    assert.equal(quote.problem, "Barulho ao frear");
+  } finally {
+    db.close();
+  }
+});
+
 test("foto pode ser removida enquanto checklist está em rascunho", async () => {
   const db = fixture();
   try {
     const created = await createChecklist(db, ctx, {
-      vehicle_id: "v",
+      plate: "ABC1D23",
+      lookup_source: "local",
+      customer_id: "c",
+      customer_name: "Cliente Teste",
+      phone: "43999999999",
+      vehicle_data: {
+        brand: "Honda",
+        model: "Civic",
+        year: 2022,
+        color: "Prata",
+        chassis: "",
+      },
       km: 12345,
       fuel_level: 75,
       inspector: "Responsável",
