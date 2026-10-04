@@ -81,6 +81,14 @@ export function OrderView() {
         description={`${order.customer_name} · ${[order.brand, order.model].filter(Boolean).join(" ") || "Veículo não informado"}`}
         actions={
           <div className="no-print action-row">
+            {admin && (
+              <button
+                className="button"
+                onClick={() => navigate(`/checklists?order=${id}`)}
+              >
+                Checklist de entrada
+              </button>
+            )}
             {admin && <ShareOrder order={order} />}
             {admin && (
               <button className="button" onClick={() => setStatusPicker(true)}>
