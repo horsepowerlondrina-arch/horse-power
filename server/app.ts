@@ -10,6 +10,7 @@ import {
   captureState,
   finishCapture,
   importCapture,
+  updateCaptureFreight,
 } from "./services/extension.js";
 import { assertUniqueService } from "./services/serviceCatalog.js";
 import { generateExpenses, payExpense } from "./services/expenses.js";
@@ -158,7 +159,7 @@ export function createApp(db: DB) {
         return;
       }
       const extensionRequest =
-        req.path === "/extension/import" &&
+        ["/extension/import", "/extension/freight"].includes(req.path) &&
         /^chrome-extension:\/\/[a-p]{32}$/.test(req.headers.origin);
       const valid =
         extensionRequest ||
@@ -272,6 +273,16 @@ export function createApp(db: DB) {
   app.post("/api/extension/import", async (req, res) => {
     const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
     res.json(await importCapture(db, token, req.body));
+  });
+  app.post("/api/extension/freight", async (req, res) => {
+    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
+    res.json(
+      await updateCaptureFreight(
+        db,
+        token,
+        integer.parse(req.body.freight_total ?? 1750),
+      ),
+    );
   });
   app.use("/api", auth(db));
   app.get("/api/session", async (_req, res) => {
@@ -517,7 +528,8 @@ export function createApp(db: DB) {
         res.locals.context,
         String(req.params.id),
         tokenFrom(req),
-        integer.parse(req.body.freight_unit ?? 0),
+        integer.parse(req.body.freight_total ?? req.body.freight_unit ?? 1750),
+        z.string().uuid().optional().parse(req.body.batch_id),
       ),
     );
   });
@@ -555,7 +567,8 @@ export function createApp(db: DB) {
         res.locals.context,
         String(req.params.id),
         tokenFrom(req),
-        integer.parse(req.body.freight_unit ?? 0),
+        integer.parse(req.body.freight_total ?? req.body.freight_unit ?? 1750),
+        z.string().uuid().optional().parse(req.body.batch_id),
       ),
     ),
   );
