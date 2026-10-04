@@ -264,14 +264,9 @@ test("capture saves quote, catalog and vehicle-specific times atomically; retrie
     await importCapture(db, token, { ...item, capture_id: randomUUID() });
     assert.equal(
       db.prepare("SELECT count(*) n FROM service_times").get()!.n,
-      1,
+      0,
     );
     assert.equal(db.prepare("SELECT count(*) n FROM order_items").get()!.n, 0);
-    assert.equal(
-      db.prepare("SELECT duration_seconds FROM service_times").get()!
-        .duration_seconds,
-      1500,
-    );
     const part = product();
     await importCapture(db, token, part);
     assert.equal(
@@ -287,6 +282,15 @@ test("capture saves quote, catalog and vehicle-specific times atomically; retrie
     assert.equal(
       db.prepare("SELECT total FROM orders WHERE id=?").get("o")!.total,
       42345,
+    );
+    assert.equal(
+      db.prepare("SELECT count(*) n FROM service_times").get()!.n,
+      1,
+    );
+    assert.equal(
+      db.prepare("SELECT duration_seconds FROM service_times").get()!
+        .duration_seconds,
+      1500,
     );
     await saveOrder(
       db,
@@ -356,6 +360,7 @@ test("services reuse normalized names and aliases, preserve catalog prices and k
     );
     const a = await beginCapture(db, ctx, "o", "session");
     await importCapture(db, a.token, service());
+    await finishCapture(db, ctx, "o");
     assert.equal(db.prepare("SELECT count(*) n FROM catalog").get()!.n, 1);
     assert.equal(
       db.prepare("SELECT price FROM catalog WHERE id='s'").get()!.price,
@@ -370,6 +375,7 @@ test("services reuse normalized names and aliases, preserve catalog prices and k
       duration_seconds: 5400,
       vehicle: { model: "Palio", year: "2018" },
     });
+    await finishCapture(db, ctx, "o2");
     assert.equal(
       db.prepare("SELECT count(*) n FROM service_times").get()!.n,
       2,
