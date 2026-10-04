@@ -19,6 +19,7 @@ import { useApp } from "../lib/context";
 import type { Entity } from "../lib/types";
 import { Empty, Field, PageHeading } from "../components/ui";
 import { ChecklistPrint } from "../components/ChecklistPrint";
+import { PlateField } from "../components/PlateField";
 
 const conditionItems = [
   "Para-brisa e vidros",
@@ -250,16 +251,34 @@ export function ChecklistEditor() {
   const { id } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { data, session, notify } = useApp();
+  const { data, session, notify, refresh } = useApp();
   const orderParam = params.get("order") || "";
   const initialOrder = data.orders.find((o) => o.id === orderParam);
+  const initialVehicle = data.vehicles.find(
+    (v) => v.id === initialOrder?.vehicle_id,
+  );
+  const initialCustomer = data.customers.find(
+    (customer) => customer.id === initialVehicle?.customer_id,
+  );
   const [creating, setCreating] = useState({
     order_id: initialOrder?.id || "",
-    vehicle_id: initialOrder?.vehicle_id || "",
-    km: initialOrder?.km || 0,
+    plate: initialVehicle?.plate || "",
+    lookup_source: initialVehicle ? "local" : "",
+    customer_id: initialCustomer?.id || "",
+    customer_name: initialCustomer?.name || "",
+    phone: initialCustomer?.phone || "",
+    vehicle_data: {
+      brand: initialVehicle?.brand || "",
+      model: initialVehicle?.model || "",
+      year: initialVehicle?.year || new Date().getFullYear(),
+      color: initialVehicle?.color || "",
+      chassis: initialVehicle?.chassis || "",
+    },
+    km: initialOrder?.km || initialVehicle?.km || 0,
     fuel_level: 50,
     inspector: session.user.name,
   });
+  const [lookupDone, setLookupDone] = useState(!!initialVehicle);
   const [record, setRecord] = useState<Entity | null>(null);
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
@@ -292,12 +311,8 @@ export function ChecklistEditor() {
     void load();
   }, [id]);
 
-  const selectedOrder = data.orders.find((o) => o.id === creating.order_id);
-  const selectedVehicle = data.vehicles.find(
-    (v) => v.id === (selectedOrder?.vehicle_id || creating.vehicle_id),
-  );
   const selectedCustomer = data.customers.find(
-    (c) => c.id === selectedVehicle?.customer_id,
+    (customer) => customer.id === creating.customer_id,
   );
 
   const create = async () => {
@@ -307,7 +322,7 @@ export function ChecklistEditor() {
       const result = await send("/checklists", {
         ...creating,
         order_id: creating.order_id || null,
-        vehicle_id: selectedOrder?.vehicle_id || creating.vehicle_id || null,
+        customer_id: creating.customer_id || null,
       });
       navigate(`/checklists/${result.id}`, { replace: true });
       notify("Checklist iniciado.");
@@ -374,6 +389,16 @@ export function ChecklistEditor() {
         {},
       );
       setRecord(next);
+      await refresh();
+      if (next.created_quote && next.redirect_order_id) {
+        notify(
+          "Checklist finalizado. Cliente/veículo conferidos e orçamento aberto automaticamente.",
+        );
+        navigate(`/ordens/${next.redirect_order_id}/editar`, {
+          replace: true,
+        });
+        return;
+      }
       notify("Checklist finalizado.");
     } catch (e) {
       setError((e as Error).message);
@@ -428,6 +453,20 @@ export function ChecklistEditor() {
   };
 
   if (!id) {
+    const local = creating.lookup_source === "local";
+    const hasCustomer =
+      !!creating.customer_id || creating.customer_name.trim().length >= 2;
+    const vehicleReady =
+      creating.vehicle_data.brand.trim().length >= 2 &&
+      creating.vehicle_data.model.trim().length >= 2 &&
+      Number(creating.vehicle_data.year) >= 1900;
+    const canStart =
+      lookupDone &&
+      creating.plate.length === 7 &&
+      hasCustomer &&
+      vehicleReady &&
+      creating.inspector.trim().length >= 2;
+
     return (
       <>
         <button className="back-link" onClick={() => navigate("/checklists")}>
@@ -436,137 +475,310 @@ export function ChecklistEditor() {
         <PageHeading
           eyebrow="CHECKLIST DE ENTRADA"
           title="Novo checklist"
-          description="Vincule o veículo e, se houver, a OS. Depois registre as condições de entrada."
+          description="Comece pela placa. O sistema verifica o cadastro da oficina e, quando necessário, consulta os dados do veículo automaticamente."
         />
         {error && <div className="error-box">{error}</div>}
-        <section className="panel checklist-start">
-          <div className="form-grid">
-            <Field label="OS (opcional)" full>
-              <select
-                value={creating.order_id}
-                onChange={(e) => {
-                  const order = data.orders.find(
-                    (o) => o.id === e.target.value,
-                  );
-                  setCreating((current) => ({
-                    ...current,
-                    order_id: e.target.value,
-                    vehicle_id: order?.vehicle_id || current.vehicle_id,
-                    km: order?.km ?? current.km,
-                  }));
-                }}
+
+        <section className="panel checklist-start plate-first-start">
+          {initialOrder && (
+            <div className="checklist-order-context">
+              Atendimento vinculado:{" "}
+              <strong>
+                {initialOrder.kind === "quote" ? "Orçamento" : "OS"} #
+                {initialOrder.number}
+              </strong>
+            </div>
+          )}
+
+          <div className="checklist-first-question">
+            <span>1</span>
+            <div>
+              <strong>Qual é a placa do veículo?</strong>
+              <small>
+                Primeiro verificamos se o veículo e o cliente já estão cadastrados.
+              </small>
+            </div>
+          </div>
+
+          <PlateField
+            value={creating.plate}
+            disabled={!!initialOrder}
+            onChange={(plate) => {
+              setLookupDone(false);
+              setCreating((current) => ({
+                ...current,
+                plate,
+                lookup_source: "",
+                customer_id: "",
+                customer_name: "",
+                phone: "",
+                vehicle_data: {
+                  brand: "",
+                  model: "",
+                  year: new Date().getFullYear(),
+                  color: "",
+                  chassis: "",
+                },
+              }));
+            }}
+            onFound={(result) => {
+              const found = result.vehicle;
+              if (result.source === "local" && found) {
+                const customer = data.customers.find(
+                  (item) => item.id === found.customer_id,
+                );
+                setCreating((current) => ({
+                  ...current,
+                  plate: String(found.plate || current.plate),
+                  lookup_source: "local",
+                  customer_id: String(found.customer_id || ""),
+                  customer_name: customer?.name || "",
+                  phone: customer?.phone || "",
+                  vehicle_data: {
+                    brand: String(found.brand || ""),
+                    model: String(found.model || ""),
+                    year: Number(found.year || new Date().getFullYear()),
+                    color: String(found.color || ""),
+                    chassis: String(found.chassis || ""),
+                  },
+                  km: Number(found.km || current.km || 0),
+                }));
+              } else {
+                setCreating((current) => ({
+                  ...current,
+                  lookup_source: result.source || "manual",
+                  customer_id: "",
+                  customer_name: "",
+                  phone: "",
+                  vehicle_data: {
+                    brand: String(found?.brand || ""),
+                    model: String(found?.model || ""),
+                    year: Number(found?.year || new Date().getFullYear()),
+                    color: String(found?.color || ""),
+                    chassis: "",
+                  },
+                }));
+              }
+              setLookupDone(true);
+            }}
+          />
+
+          {!lookupDone && (
+            <p className="checklist-lookup-hint">
+              Informe a placa completa e toque em <b>Consultar placa</b> para
+              continuar.
+            </p>
+          )}
+
+          {lookupDone && (
+            <>
+              <div
+                className={`checklist-lookup-result ${local ? "found" : "new"}`}
               >
-                <option value="">Sem OS vinculada</option>
-                {data.orders
-                  .filter(
-                    (order) =>
-                      order.kind === "order" &&
-                      order.status !== "cancelled",
-                  )
-                  .map((order) => (
-                    <option value={order.id} key={order.id}>
-                      OS #{order.number} · {order.plate} ·{" "}
-                      {order.customer_name}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-            <Field label="Veículo *" full>
-              <select
-                value={selectedOrder?.vehicle_id || creating.vehicle_id}
-                disabled={!!selectedOrder}
-                onChange={(e) =>
-                  setCreating((current) => ({
-                    ...current,
-                    vehicle_id: e.target.value,
-                    km:
-                      data.vehicles.find(
-                        (v) => v.id === e.target.value,
-                      )?.km || current.km,
-                  }))
-                }
-              >
-                <option value="">Selecione o veículo</option>
-                {data.vehicles
-                  .filter((vehicle) => vehicle.active)
-                  .map((vehicle) => (
-                    <option value={vehicle.id} key={vehicle.id}>
-                      {vehicle.plate} · {vehicle.brand}{" "}
-                      {vehicle.model} · {vehicle.customer_name}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-            {selectedVehicle && (
-              <div className="checklist-linked-data full">
                 <strong>
-                  {selectedCustomer?.name || selectedVehicle.customer_name}
+                  {local
+                    ? "Veículo encontrado no cadastro da oficina"
+                    : "Veículo ainda não cadastrado"}
                 </strong>
                 <span>
-                  {selectedVehicle.plate} · {selectedVehicle.brand}{" "}
-                  {selectedVehicle.model} · {selectedVehicle.year}
+                  {local
+                    ? "O checklist será vinculado ao cliente e veículo existentes."
+                    : "Confira os dados abaixo. O cadastro só será criado quando o checklist for finalizado."}
                 </span>
               </div>
-            )}
-            <Field label="Quilometragem (km)">
-              <input
-                type="number"
-                min="0"
-                value={creating.km}
-                onChange={(e) =>
-                  setCreating((current) => ({
-                    ...current,
-                    km: Math.max(0, Number(e.target.value)),
-                  }))
-                }
-              />
-            </Field>
-            <Field label="Nível de combustível">
-              <select
-                value={creating.fuel_level}
-                onChange={(e) =>
-                  setCreating((current) => ({
-                    ...current,
-                    fuel_level: Number(e.target.value),
-                  }))
-                }
-              >
-                <option value={0}>Vazio</option>
-                <option value={25}>1/4</option>
-                <option value={50}>1/2</option>
-                <option value={75}>3/4</option>
-                <option value={100}>Cheio</option>
-              </select>
-            </Field>
-            <Field label="Responsável pelo checklist *" full>
-              <input
-                value={creating.inspector}
-                onChange={(e) =>
-                  setCreating((current) => ({
-                    ...current,
-                    inspector: e.target.value,
-                  }))
-                }
-              />
-            </Field>
-          </div>
-          <div className="panel-foot">
-            <span>
-              Cliente, veículo e dados de entrada ficam vinculados ao sistema.
-            </span>
-            <button
-              className="button primary"
-              disabled={
-                busy ||
-                !selectedVehicle ||
-                creating.inspector.trim().length < 2
-              }
-              onClick={() => void create()}
-            >
-              <ClipboardCheck size={17} />
-              {busy ? "Criando..." : "Continuar checklist"}
-            </button>
-          </div>
+
+              {!local && !initialOrder && (
+                <div className="form-grid checklist-customer-step">
+                  <Field label="Cliente já cadastrado?" full>
+                    <select
+                      value={creating.customer_id}
+                      onChange={(e) => {
+                        const customer = data.customers.find(
+                          (item) => item.id === e.target.value,
+                        );
+                        setCreating((current) => ({
+                          ...current,
+                          customer_id: e.target.value,
+                          customer_name: customer?.name || "",
+                          phone: customer?.phone || "",
+                        }));
+                      }}
+                    >
+                      <option value="">Não · cadastrar novo cliente ao finalizar</option>
+                      {data.customers
+                        .filter((customer) => customer.active)
+                        .map((customer) => (
+                          <option key={customer.id} value={customer.id}>
+                            {customer.name}
+                            {customer.phone ? ` · ${customer.phone}` : ""}
+                          </option>
+                        ))}
+                    </select>
+                  </Field>
+
+                  {!creating.customer_id && (
+                    <>
+                      <Field label="Nome do cliente *">
+                        <input
+                          value={creating.customer_name}
+                          onChange={(e) =>
+                            setCreating((current) => ({
+                              ...current,
+                              customer_name: e.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Telefone / celular">
+                        <input
+                          value={creating.phone}
+                          onChange={(e) =>
+                            setCreating((current) => ({
+                              ...current,
+                              phone: e.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {local && (
+                <div className="checklist-linked-data">
+                  <strong>{selectedCustomer?.name || creating.customer_name}</strong>
+                  <span>
+                    {creating.plate} · {creating.vehicle_data.brand}{" "}
+                    {creating.vehicle_data.model} · {creating.vehicle_data.year}
+                  </span>
+                </div>
+              )}
+
+              <div className="form-grid checklist-vehicle-step">
+                <Field label="Marca *">
+                  <input
+                    disabled={local}
+                    value={creating.vehicle_data.brand}
+                    onChange={(e) =>
+                      setCreating((current) => ({
+                        ...current,
+                        vehicle_data: {
+                          ...current.vehicle_data,
+                          brand: e.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Modelo *">
+                  <input
+                    disabled={local}
+                    value={creating.vehicle_data.model}
+                    onChange={(e) =>
+                      setCreating((current) => ({
+                        ...current,
+                        vehicle_data: {
+                          ...current.vehicle_data,
+                          model: e.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Ano *">
+                  <input
+                    disabled={local}
+                    type="number"
+                    min="1900"
+                    max="2100"
+                    value={creating.vehicle_data.year}
+                    onChange={(e) =>
+                      setCreating((current) => ({
+                        ...current,
+                        vehicle_data: {
+                          ...current.vehicle_data,
+                          year: Number(e.target.value),
+                        },
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Cor">
+                  <input
+                    disabled={local}
+                    value={creating.vehicle_data.color}
+                    onChange={(e) =>
+                      setCreating((current) => ({
+                        ...current,
+                        vehicle_data: {
+                          ...current.vehicle_data,
+                          color: e.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Quilometragem (km)">
+                  <input
+                    type="number"
+                    min="0"
+                    value={creating.km}
+                    onChange={(e) =>
+                      setCreating((current) => ({
+                        ...current,
+                        km: Math.max(0, Number(e.target.value)),
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Nível de combustível">
+                  <select
+                    value={creating.fuel_level}
+                    onChange={(e) =>
+                      setCreating((current) => ({
+                        ...current,
+                        fuel_level: Number(e.target.value),
+                      }))
+                    }
+                  >
+                    <option value={0}>Vazio</option>
+                    <option value={25}>1/4</option>
+                    <option value={50}>1/2</option>
+                    <option value={75}>3/4</option>
+                    <option value={100}>Cheio</option>
+                  </select>
+                </Field>
+                <Field label="Responsável pelo checklist *" full>
+                  <input
+                    value={creating.inspector}
+                    onChange={(e) =>
+                      setCreating((current) => ({
+                        ...current,
+                        inspector: e.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+              </div>
+
+              <div className="panel-foot">
+                <span>
+                  {!creating.order_id
+                    ? "Ao finalizar, o sistema confere/cria os cadastros necessários e abre um orçamento automaticamente."
+                    : "Este checklist permanecerá vinculado ao atendimento já existente."}
+                </span>
+                <button
+                  className="button primary"
+                  disabled={busy || !canStart}
+                  onClick={() => void create()}
+                >
+                  <ClipboardCheck size={17} />
+                  {busy ? "Criando..." : "Continuar checklist"}
+                </button>
+              </div>
+            </>
+          )}
         </section>
       </>
     );
@@ -601,7 +813,11 @@ export function ChecklistEditor() {
         <PageHeading
           eyebrow="CHECKLIST DE ENTRADA"
           title={`${record.plate} · ${record.vehicle_label}`}
-          description={`${record.customer_name}${record.order_number ? ` · OS #${record.order_number}` : ""}`}
+          description={`${record.customer_name}${
+            record.order_number
+              ? ` · ${record.order_kind === "quote" ? "Orçamento" : "OS"} #${record.order_number}`
+              : ""
+          }`}
           actions={
             <>
               <Link
