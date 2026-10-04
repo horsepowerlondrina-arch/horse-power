@@ -163,6 +163,7 @@ export async function updateCaptureFreight(
   token: string,
   freightTotal: number,
 ) {
+  freightTotal = z.number().int().min(0).max(100000000).parse(freightTotal);
   return transaction(db, async () => {
     const s = await activeCaptureSession(db, token);
     const ctx: Context = {
@@ -191,6 +192,7 @@ export async function beginCapture(
   batchId = randomUUID(),
 ) {
   requireAdmin(ctx);
+  freightTotal = z.number().int().min(0).max(100000000).parse(freightTotal);
   return transaction(db, async () => {
     const order = await scoped(db, "orders", ctx.tenantId, orderId);
     if (["completed", "cancelled"].includes(order.status))
@@ -507,6 +509,7 @@ export async function beginCatalogCapture(
   batchId = randomUUID(),
 ) {
   requireAdmin(ctx);
+  freightTotal = z.number().int().min(0).max(100000000).parse(freightTotal);
   z.string().uuid().parse(target);
   batchId = z.string().uuid().parse(batchId);
   return transaction(db, async () => {
