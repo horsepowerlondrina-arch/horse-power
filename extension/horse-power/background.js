@@ -43,6 +43,22 @@ async function deliver(entry) {
   if (!response.ok) throw new Error(body.error || "Não foi possível enviar.");
   return body;
 }
+async function updateFreight(target, freightTotal) {
+  const response = await fetch(target.origin + "/api/extension/freight", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + target.token,
+    },
+    body: JSON.stringify({ freight_total: freightTotal }),
+    credentials: "omit",
+    signal: AbortSignal.timeout(15000),
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new Error(body.error || "Não foi possível atualizar o frete.");
+  return body;
+}
 async function handle(msg, sender) {
   await ready;
   const origin = originOf(sender);
@@ -79,6 +95,10 @@ async function handle(msg, sender) {
       plate: /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(msg.target.plate)
         ? msg.target.plate
         : "",
+      freightTotal: Number.isInteger(msg.target.freight_total)
+        ? msg.target.freight_total
+        : 1750,
+      batchId: typeof msg.target.batch_id === "string" ? msg.target.batch_id : "",
       origin,
       tabId: sender.tab.id,
       connectionId: crypto.randomUUID(),
@@ -102,6 +122,31 @@ async function handle(msg, sender) {
       plateAutofill: true,
       catalogCapture: true,
       label: target?.label,
+      freightTotal: target?.freightTotal ?? 1750,
+    };
+  }
+  if (
+    msg.type === "HP_SET_FREIGHT" &&
+    (isApp || (sources[origin] === "sky" && sender.frameId === 0))
+  ) {
+    if (
+      !Number.isInteger(msg.freight_total) ||
+      msg.freight_total < 0 ||
+      msg.freight_total > 100000000
+    )
+      throw new Error("Informe um frete válido.");
+    const { target } = await chrome.storage.session.get("target");
+    if (!target || target.expires <= Date.now())
+      throw new Error(
+        "Conecte a extensão novamente antes de alterar o frete.",
+      );
+    const result = await updateFreight(target, msg.freight_total);
+    target.freightTotal = result.freight_total ?? msg.freight_total;
+    await chrome.storage.session.set({ target });
+    return {
+      ok: true,
+      freight_total: target.freightTotal,
+      item_count: result.item_count ?? 0,
     };
   }
   if (
