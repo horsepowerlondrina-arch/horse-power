@@ -4335,3 +4335,75 @@ body {
     border-bottom: 0.7pt solid #555;
   }
 }
+
+
+/* Plate-first checklist start */
+.plate-first-start {
+  max-width: 900px;
+}
+.checklist-order-context {
+  margin-bottom: 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fafafa;
+  font-size: 12px;
+}
+.checklist-first-question {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.checklist-first-question > span {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font-weight: 700;
+}
+.checklist-first-question div {
+  display: grid;
+  gap: 3px;
+}
+.checklist-first-question strong {
+  font-size: 16px;
+}
+.checklist-first-question small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+.checklist-lookup-hint {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.checklist-lookup-result {
+  display: grid;
+  gap: 4px;
+  margin: 18px 0;
+  padding: 13px 15px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.checklist-lookup-result strong {
+  font-size: 13px;
+}
+.checklist-lookup-result.found {
+  border: 1px solid #bfe8cf;
+  background: #effaf4;
+  color: #176b43;
+}
+.checklist-lookup-result.new {
+  border: 1px solid #f0d6a5;
+  background: #fff9eb;
+  color: #795113;
+}
+.checklist-customer-step,
+.checklist-vehicle-step {
+  margin-top: 10px;
+}
