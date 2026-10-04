@@ -5,6 +5,7 @@ import { generateExpenses, payExpense } from "../server/services/expenses";
 import { createShare, readShare } from "../server/services/sharing";
 import { calculatePlan } from "../server/domain/payments";
 import { digest } from "../server/auth/session";
+import { transitionOrder } from "../server/services/workshop";
 const ctx = { userId: "u", tenantId: "a", role: "owner" };
 function fixture() {
   const db = createDatabase(":memory:");
@@ -71,8 +72,16 @@ test("Public shares allow only selected data, expire, revoke and isolate tenants
     async () => await createShare(db, { ...ctx, tenantId: "b" }, "o"),
   );
   const s2 = await createShare(db, ctx, "o");
+  assert.equal(s2.path, s.path);
+  assert.equal(s2.reused, true);
+  assert.ok(await readShare(db, token));
+
+  await transitionOrder(db, ctx, "o", "cancelled");
   assert.equal(await readShare(db, token), null);
-  const t2 = s2.path.split("/").pop()!;
+  const s3 = await createShare(db, ctx, "o");
+  assert.notEqual(s3.path, s.path);
+  assert.equal(s3.reused, false);
+  const t2 = s3.path.split("/").pop()!;
   db.prepare("UPDATE public_shares SET expires_at=0 WHERE token_hash=?").run(
     digest(t2),
   );

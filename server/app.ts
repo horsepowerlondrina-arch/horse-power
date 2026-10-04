@@ -34,6 +34,7 @@ import {
 import {
   audit,
   id,
+  invalidateOrderShares,
   listOrders,
   mechanicWorkspace,
   saveOrder,
@@ -627,11 +628,11 @@ export function createApp(db: DB) {
   app.post("/api/orders/:id/revoke-share", async (req, res) => {
     const ctx: Context = res.locals.context;
     await scoped(db, "orders", ctx.tenantId, String(req.params.id));
-    await db
-      .prepare(
-        "UPDATE public_shares SET revoked=1 WHERE tenant_id=? AND order_id=?",
-      )
-      .run(ctx.tenantId, String(req.params.id));
+    await invalidateOrderShares(
+      db,
+      ctx.tenantId,
+      String(req.params.id),
+    );
     res.json({ ok: true });
   });
   const lookupLimits = new Map<string, { count: number; until: number }>();
@@ -699,9 +700,11 @@ export function createApp(db: DB) {
       throw new Error("As observações só podem mudar em uma OS em andamento.");
     const notes = z.string().trim().max(4000).parse(req.body.notes);
     await transaction(db, async () => {
+      if (String(order.notes || "") === notes) return;
       await db
         .prepare("UPDATE orders SET notes=? WHERE tenant_id=? AND id=?")
         .run(notes, ctx.tenantId, record);
+      await invalidateOrderShares(db, ctx.tenantId, record);
       await audit(db, ctx, "order.notes_updated", record);
     });
     res.json({ ok: true });

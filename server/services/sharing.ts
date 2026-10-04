@@ -7,19 +7,42 @@ export async function createShare(db: DB, ctx: Context, record: string) {
   requireAdmin(ctx);
   return await transaction(db, async () => {
     await scoped(db, "orders", ctx.tenantId, record);
+    const current = await db
+      .prepare(
+        `SELECT token_value FROM public_shares
+         WHERE tenant_id=? AND order_id=? AND revoked=0 AND expires_at>?
+           AND token_value IS NOT NULL AND token_value<>''
+         ORDER BY expires_at DESC LIMIT 1`,
+      )
+      .get(ctx.tenantId, record, Date.now());
+    if (current?.token_value) {
+      await audit(db, ctx, "order.share_reused", record);
+      return {
+        path: `/p/${current.token_value}`,
+        expires_days: null,
+        reused: true,
+      };
+    }
+
     const token = randomBytes(32).toString("hex");
     await db
       .prepare(
-        "UPDATE public_shares SET revoked=1 WHERE tenant_id=? AND order_id=?",
+        "UPDATE public_shares SET revoked=1 WHERE tenant_id=? AND order_id=? AND revoked=0",
       )
       .run(ctx.tenantId, record);
     await db
       .prepare(
-        "INSERT INTO public_shares(token_hash,tenant_id,order_id,expires_at) VALUES(?,?,?,?)",
+        "INSERT INTO public_shares(token_hash,tenant_id,order_id,expires_at,token_value) VALUES(?,?,?,?,?)",
       )
-      .run(digest(token), ctx.tenantId, record, Date.now() + 30 * 86400000);
+      .run(
+        digest(token),
+        ctx.tenantId,
+        record,
+        Number.MAX_SAFE_INTEGER,
+        token,
+      );
     await audit(db, ctx, "order.shared", record);
-    return { path: `/p/${token}`, expires_days: 30 };
+    return { path: `/p/${token}`, expires_days: null, reused: false };
   });
 }
 export async function readShare(db: DB, token: string) {

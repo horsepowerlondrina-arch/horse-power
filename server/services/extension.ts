@@ -3,7 +3,7 @@ import { z } from "zod";
 import { type DB, transaction } from "../db/database.js";
 import { digest, type Context } from "../auth/session.js";
 import { requireAdmin } from "./payments.js";
-import { audit, id, scoped } from "./workshop.js";
+import { audit, id, invalidateOrderShares, scoped } from "./workshop.js";
 import { serviceNameKey } from "./serviceCatalog.js";
 import { workshopPrice } from "./partsPricing.js";
 const txt = z.string().trim().max(300).default("");
@@ -523,6 +523,8 @@ export async function finishCapture(db: DB, ctx: Context, orderId: string) {
           ctx.tenantId,
           orderId,
         );
+      if (staged.length)
+        await invalidateOrderShares(db, ctx.tenantId, orderId);
     }
     await db
       .prepare("DELETE FROM capture_sessions WHERE tenant_id=? AND order_id=?")

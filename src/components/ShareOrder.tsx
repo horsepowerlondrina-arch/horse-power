@@ -94,8 +94,10 @@ export function ShareOrder({ order }: { order: Order }) {
                   />
                 </Field>
                 <p className="muted">
-                  O link vale por 30 dias. Gerar outro link invalida o anterior.
-                  Quem tiver o link poderá visualizar os itens e valores.
+                  Este link permanece o mesmo enquanto a OS/orçamento não for
+                  alterado. Ao mudar dados, itens, valores ou status, o link
+                  atual é invalidado e um novo será criado no próximo
+                  compartilhamento. Você também pode desativá-lo manualmente.
                 </p>
                 {!publicReady && (
                   <div className="error-box">

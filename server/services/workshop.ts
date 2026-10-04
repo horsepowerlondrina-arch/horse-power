@@ -32,6 +32,18 @@ export async function audit(
     )
     .run(id(), ctx.tenantId, ctx.userId, action, entity);
 }
+
+export async function invalidateOrderShares(
+  db: DB,
+  tenantId: string,
+  orderId: string,
+) {
+  await db
+    .prepare(
+      "UPDATE public_shares SET revoked=1 WHERE tenant_id=? AND order_id=? AND revoked=0",
+    )
+    .run(tenantId, orderId);
+}
 export async function listOrders(db: DB, tenant: string): Promise<Row[]> {
   const rows = await db
     .prepare(
@@ -134,6 +146,37 @@ export async function saveOrder(
     );
     const total = totalOf(items, input.discount);
     const orderId = record || id();
+    const changed =
+      !!old &&
+      (
+        String(old.customer_id || "") !== String(customerId || "") ||
+        String(old.vehicle_id || "") !== String(vehicleId || "") ||
+        String(old.guest_name || "") !== String(input.guest_name || "") ||
+        String(old.guest_plate || "") !== String(input.guest_plate || "") ||
+        String(old.guest_vehicle || "") !== String(input.guest_vehicle || "") ||
+        String(old.entered_on || "") !== String(input.entered_on || "") ||
+        String(old.due_on || "") !== String(input.due_on || "") ||
+        Number(old.km || 0) !== Number(input.km || 0) ||
+        String(old.problem || "") !== String(input.problem || "") ||
+        String(old.notes || "") !== String(input.notes || "") ||
+        Number(old.discount || 0) !== Number(input.discount || 0) ||
+        Number(old.total || 0) !== total ||
+        previous.length !== items.length ||
+        items.some((item) => {
+          const prior = previous.find((row) => row.id === item.snapshotId);
+          return (
+            !prior ||
+            String(prior.catalog_id) !== String(item.catalog_id) ||
+            String(prior.professional_id || "") !==
+              String(item.professional_id || "") ||
+            String(prior.kind) !== String(item.kind) ||
+            String(prior.name) !== String(item.name) ||
+            Number(prior.quantity) !== Number(item.quantity) ||
+            Number(prior.price) !== Number(item.price) ||
+            Number(prior.cost) !== Number(item.cost)
+          );
+        })
+      );
     const values = [
       customerId,
       vehicleId,
@@ -193,6 +236,8 @@ export async function saveOrder(
           item.price,
           item.cost,
         );
+    if (changed)
+      await invalidateOrderShares(db, ctx.tenantId, orderId);
     await audit(
       db,
       ctx,
@@ -385,6 +430,7 @@ export async function transitionOrder(
         ctx.tenantId,
         record,
       );
+    await invalidateOrderShares(db, ctx.tenantId, record);
     await audit(
       db,
       ctx,

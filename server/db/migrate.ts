@@ -11,6 +11,7 @@ export function migrate(db: DatabaseSync) {
     [8, "008-extension-catalog.sql"],
     [9, "009-catalog-stock-pricing.sql"],
     [10, "010-capture-freight-total.sql"],
+    [11, "011-reusable-order-share.sql"],
   ] as const) {
     if (db.prepare("SELECT 1 FROM migrations WHERE version=?").get(version))
       continue;
