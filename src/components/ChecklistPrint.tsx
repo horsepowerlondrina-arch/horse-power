@@ -45,7 +45,10 @@ export function ChecklistPrint({
         <div><b>Telefone:</b> {checklist.phone || "—"}</div>
         <div><b>Veículo:</b> {checklist.vehicle_label}</div>
         <div><b>Placa:</b> {checklist.plate}</div>
-        <div><b>OS:</b> {checklist.order_number ? `#${checklist.order_number}` : "—"}</div>
+        <div>
+          <b>{checklist.order_kind === "quote" ? "Orçamento" : "OS"}:</b>{" "}
+          {checklist.order_number ? `#${checklist.order_number}` : "—"}
+        </div>
         <div><b>KM:</b> {Number(checklist.km || 0).toLocaleString("pt-BR")}</div>
         <div><b>Combustível:</b> {checklist.fuel_level}%</div>
         <div><b>Responsável:</b> {checklist.inspector}</div>
