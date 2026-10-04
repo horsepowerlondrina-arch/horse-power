@@ -46,7 +46,9 @@ export function OrderEditor() {
     <Editor
       key={order ? `${order.id}:${order.status}` : location.pathname}
       order={order}
-      quote={location.pathname.startsWith("/orcamentos")}
+      quote={
+        order?.kind === "quote" || location.pathname.startsWith("/orcamentos")
+      }
     />
   );
 }
