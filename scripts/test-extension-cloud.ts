@@ -92,7 +92,7 @@ try {
       headers,
       body: JSON.stringify({
         kind: "service",
-        name: "Cadastro manual bloqueado",
+        name: "Cadastro manual permitido",
         sku: "MANUAL",
         cost: 0,
         price: 100,
@@ -100,7 +100,7 @@ try {
         minimum_stock: 0,
       }),
     });
-    assert.equal(manual.status, 400);
+    assert.equal(manual.status, 200);
     const start = await fetch(
       base + "/api/orders/" + order + "/capture-session",
       { method: "POST", headers, body: "{}" },
@@ -128,7 +128,7 @@ try {
     const refreshed = await (
       await fetch(base + "/api/workspace", { headers })
     ).json();
-    assert.equal(refreshed.catalog.length, 1);
+    assert.equal(refreshed.catalog.length, 2);
     assert.equal(refreshed.orders[0].items.length, 3);
     const end = await fetch(base + "/api/orders/" + order + "/end-capture", {
       method: "POST",
@@ -136,6 +136,70 @@ try {
       body: "{}",
     });
     assert.equal(end.status, 200);
+    const catalogTarget = randomUUID();
+    const connectCatalog = await fetch(
+      base + `/api/catalog-capture/${catalogTarget}/start`,
+      { method: "POST", headers, body: JSON.stringify({ freight_unit: 100 }) },
+    );
+    assert.equal(connectCatalog.status, 200);
+    const catalogSession = await connectCatalog.json();
+    assert.equal(catalogSession.destination, "catalog");
+    const imported = await fetch(base + "/api/extension/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + catalogSession.token,
+      },
+      body: JSON.stringify({
+        capture_id: randomUUID(),
+        source: "sky",
+        name: "Peça teste frete",
+        code: "FRETE",
+        brand: "TEST",
+        cost: 500,
+      }),
+    });
+    assert.equal(imported.status, 200, await imported.text());
+    const catalogState = await (
+      await fetch(base + `/api/catalog-capture/${catalogTarget}/end`, {
+        method: "POST",
+        headers,
+        body: "{}",
+      })
+    ).json();
+    const part = catalogState.items[0];
+    assert.equal(part.cost, 600);
+    assert.equal(part.price, 1400);
+    assert.equal(part.freight_unit, 100);
+    assert.equal(part.stock, 0);
+    const stockInput = {
+      quantity: 3,
+      cost: 600,
+      freight_unit: 100,
+      price: 1400,
+      reason: "Entrada teste isolada",
+      request_id: randomUUID(),
+    };
+    for (let n = 0; n < 2; n++) {
+      const receipt = await fetch(base + `/api/stock/${part.id}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(stockInput),
+      });
+      assert.equal(receipt.status, 200, await receipt.text());
+    }
+    const saved = await db
+      .prepare(
+        "SELECT stock,cost,price FROM catalog WHERE tenant_id=? AND id=?",
+      )
+      .get(tenant, part.id);
+    assert.equal(saved?.stock, 3);
+    assert.equal(saved?.cost, 600);
+    assert.equal(saved?.price, 1400);
+    const latest = await (
+      await fetch(base + "/api/workspace", { headers })
+    ).json();
+    assert.equal(latest.parts_pricing.rules.length, 7);
   }
   console.log(
     "Extensão verificada no PostgreSQL: gravação, tempos, preços, duplicações e encerramento.",
@@ -147,6 +211,7 @@ try {
     "external_captures",
     "external_catalog_links",
     "audit_events",
+    "stock_movements",
     "order_items",
     "orders",
     "catalog",

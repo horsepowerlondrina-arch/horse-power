@@ -1,3 +1,4 @@
+import { CapturePanel } from "../components/CapturePanel";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -50,14 +51,14 @@ const config = {
   },
 };
 export function Registers({ kind }: { kind: Kind }) {
-  const { data, session } = useApp();
+  const { data, session, refresh } = useApp();
   const [params] = useSearchParams();
   const [search, setSearch] = useState(params.get("q") || "");
   const [filter, setFilter] = useState("active");
   const [type, setType] = useState("product");
   const [editing, setEditing] = useState<Entity | null | undefined>();
   const c = config[kind];
-  const extensionOnly = kind === "catalog" && data.catalog_mode === "extension";
+  const [capture, setCapture] = useState<"sky" | "tempario" | null>(null);
   const Icon = c.icon;
   const rows = data[kind].filter(
     (r) =>
@@ -84,30 +85,42 @@ export function Registers({ kind }: { kind: Kind }) {
       <PageHeading
         eyebrow="CADASTROS"
         title={c.title}
-        description={
-          extensionOnly
-            ? "Peças do Sky e serviços do Tempario, salvos automaticamente a cada envio da extensão."
-            : c.description
-        }
+        description={c.description}
         actions={
-          extensionOnly ? (
-            <Link className="button primary" to="/orcamentos">
-              <ArrowUpRight size={18} />
-              Importar em um orçamento
-            </Link>
-          ) : (
-            <button className="button primary" onClick={() => setEditing(null)}>
-              <Plus size={18} />
-              Novo{" "}
-              {kind === "catalog"
-                ? type === "product"
-                  ? "produto"
-                  : "serviço"
-                : c.singular}
-            </button>
-          )
+          <button className="button primary" onClick={() => setEditing(null)}>
+            <Plus size={18} />
+            Novo{" "}
+            {kind === "catalog"
+              ? type === "service"
+                ? "serviço"
+                : "produto"
+              : c.singular}
+          </button>
         }
       />
+      {kind === "catalog" && (
+        <div className="capture-actions">
+          <button className="button" onClick={() => setCapture("sky")}>
+            Importar produto do Sky
+          </button>
+          <button className="button" onClick={() => setCapture("tempario")}>
+            Importar serviço do Tempario
+          </button>
+          <Link className="button" to="/configuracoes?aba=pecas">
+            Configurar lucro das peças
+          </Link>
+        </div>
+      )}
+      {capture && (
+        <CapturePanel
+          catalog
+          source={capture}
+          onClose={async () => {
+            await refresh();
+            setCapture(null);
+          }}
+        />
+      )}
       <section className="panel register-panel">
         {kind === "catalog" && (
           <div className="tabs">
@@ -335,28 +348,11 @@ export function Registers({ kind }: { kind: Kind }) {
           </div>
         ) : (
           <Empty
-            title={
-              extensionOnly && !search && filter === "active"
-                ? "Seu catálogo começa pela extensão"
-                : undefined
-            }
-            description={
-              extensionOnly
-                ? "Abra um orçamento e use Adicionar produto ou Adicionar serviço. Os itens enviados pela extensão aparecerão aqui para reutilizar."
-                : undefined
-            }
             action={
-              extensionOnly ? (
-                <Link className="button" to="/orcamentos">
-                  Abrir orçamentos
-                  <ArrowUpRight size={16} />
-                </Link>
-              ) : (
-                <button className="button" onClick={() => setEditing(null)}>
-                  <Icon size={16} />
-                  Adicionar {c.singular}
-                </button>
-              )
+              <button className="button" onClick={() => setEditing(null)}>
+                <Icon size={16} />
+                Adicionar {c.singular}
+              </button>
             }
           />
         )}
@@ -368,7 +364,11 @@ export function Registers({ kind }: { kind: Kind }) {
       {editing !== undefined && (
         <RegisterModal
           kind={kind}
-          initial={kind === "catalog" ? { kind: type } : undefined}
+          initial={
+            kind === "catalog"
+              ? { kind: type === "service" ? "service" : "product" }
+              : undefined
+          }
           record={editing}
           onClose={() => setEditing(undefined)}
         />
@@ -424,9 +424,10 @@ export function RegisterModal({
     catalog: {
       kind: "product",
       name: "",
-      sku: "",
+      sku: `HP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       category: "",
       cost: 0,
+      freight_unit: 0,
       price: 0,
       stock: 0,
       minimum_stock: 0,
@@ -440,10 +441,13 @@ export function RegisterModal({
       active: 1,
     },
   };
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<Record<string, any>>({
     ...defaults[kind],
     ...initial,
     ...record,
+    ...(kind === "catalog" && record
+      ? { cost: record.cost - (record.freight_unit || 0) }
+      : {}),
   });
   const [withVehicle, setWithVehicle] = useState(false);
   const [vehicle, setVehicle] = useState({ ...defaults.vehicles });
@@ -494,13 +498,26 @@ export function RegisterModal({
           : `/${kind}${record ? `/${record.id}` : ""}`,
         kind === "customers" && !record && withVehicle
           ? { customer: form, vehicle }
-          : form,
+          : kind === "catalog"
+            ? {
+                ...form,
+                cost:
+                  form.cost + (form.kind === "product" ? form.freight_unit : 0),
+                freight_unit: form.kind === "product" ? form.freight_unit : 0,
+              }
+            : form,
         record ? "PUT" : "POST",
       );
       await refresh();
       notify("Cadastro salvo com sucesso.");
       onSaved?.(result.id, {
         ...form,
+        ...(kind === "catalog"
+          ? {
+              cost:
+                form.cost + (form.kind === "product" ? form.freight_unit : 0),
+            }
+          : {}),
         vehicle_id: result.vehicle_id,
         vehicle_km: vehicle.km,
       });
@@ -654,8 +671,34 @@ export function RegisterModal({
                 {input("sku", "Referência *", "text", true)}
                 {input("name", "Descrição *", "text", true, true)}
                 {input("category", "Categoria", "text", false, true)}
-                {moneyInput("cost", "Custo (R$)")}
+                {moneyInput("cost", "Custo sem frete (R$)")}
+                {form.kind === "product" &&
+                  moneyInput("freight_unit", "Frete por unidade (R$)")}
                 {moneyInput("price", "Preço de venda (R$)")}
+                {form.kind === "product" && (
+                  <div className="full info-box">
+                    Lucro bruto por unidade:{" "}
+                    <strong>
+                      {money(form.price - form.cost - form.freight_unit)}
+                    </strong>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={async () => {
+                        try {
+                          const r = await send("/parts-pricing/preview", {
+                            cost: form.cost + form.freight_unit,
+                          });
+                          set("price", r.price);
+                        } catch (e) {
+                          setError((e as Error).message);
+                        }
+                      }}
+                    >
+                      Aplicar regra de lucro
+                    </button>
+                  </div>
+                )}
                 {form.kind === "product" && (
                   <>
                     {!record

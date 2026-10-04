@@ -1,5 +1,12 @@
 import {
+  partsPricingSchema,
+  workshopPrice,
+  getPartsPricing,
+} from "./services/partsPricing.js";
+import {
   beginCapture,
+  beginCatalogCapture,
+  catalogCaptureState,
   captureState,
   finishCapture,
   importCapture,
@@ -88,6 +95,7 @@ const schemas = {
     price: integer,
     stock: integer,
     minimum_stock: integer,
+    freight_unit: integer.default(0),
     active: z.number().int().min(0).max(1).default(1),
   }),
   professionals: z.object({
@@ -330,6 +338,7 @@ export function createApp(db: DB) {
             .prepare("SELECT catalog_mode FROM tenants WHERE id=?")
             .get(tenant)
         )?.catalog_mode || "standard",
+      parts_pricing: await getPartsPricing(db, tenant),
       installments: await db
         .prepare(
           "SELECT * FROM payment_installments WHERE tenant_id=? ORDER BY sequence",
@@ -508,6 +517,7 @@ export function createApp(db: DB) {
         res.locals.context,
         String(req.params.id),
         tokenFrom(req),
+        integer.parse(req.body.freight_unit ?? 0),
       ),
     );
   });
@@ -519,6 +529,51 @@ export function createApp(db: DB) {
       await finishCapture(db, res.locals.context, String(req.params.id)),
     );
   });
+  app.put("/api/parts-pricing", async (req, res) => {
+    const v = partsPricingSchema.parse(req.body),
+      ctx: Context = res.locals.context;
+    await transaction(db, async () => {
+      await db
+        .prepare(
+          "UPDATE tenants SET parts_pricing_mode=?,parts_pricing_bps=?,parts_pricing_rules=? WHERE id=?",
+        )
+        .run(v.mode, v.rate_bps, JSON.stringify(v.rules), ctx.tenantId);
+      await audit(db, ctx, "parts_pricing.updated", ctx.tenantId);
+    });
+    res.json({ ok: true });
+  });
+  app.post("/api/parts-pricing/preview", async (req, res) => {
+    const cost = integer.parse(req.body.cost);
+    res.json({
+      price: await workshopPrice(db, res.locals.context.tenantId, cost),
+    });
+  });
+  app.post("/api/catalog-capture/:id/start", async (req, res) =>
+    res.json(
+      await beginCatalogCapture(
+        db,
+        res.locals.context,
+        String(req.params.id),
+        tokenFrom(req),
+        integer.parse(req.body.freight_unit ?? 0),
+      ),
+    ),
+  );
+  app.get("/api/catalog-capture/:id", async (req, res) =>
+    res.json(
+      await catalogCaptureState(db, res.locals.context, String(req.params.id)),
+    ),
+  );
+  app.post("/api/catalog-capture/:id/end", async (req, res) =>
+    res.json(
+      await catalogCaptureState(
+        db,
+        res.locals.context,
+        String(req.params.id),
+        true,
+      ),
+    ),
+  );
   app.get("/api/service-times", async (_req, res) => {
     if (res.locals.context.role !== "owner") {
       res.status(403).json({ error: "Acesso restrito ao administrador." });
@@ -699,26 +754,19 @@ export function createApp(db: DB) {
             );
         }
         if (table === "catalog") {
+          if (input.freight_unit > input.cost)
+            throw new Error("O custo total deve incluir o frete.");
+          if (input.kind === "service") input.freight_unit = 0;
           if (old?.archived_at)
             throw new Error(
               "Este item pertence ao catálogo anterior. Importe novamente pela extensão.",
-            );
-          if (
-            !old &&
-            (
-              await db
-                .prepare("SELECT catalog_mode FROM tenants WHERE id=?")
-                .get(ctx.tenantId)
-            )?.catalog_mode === "extension"
-          )
-            throw new Error(
-              "Novos produtos e serviços são cadastrados pela extensão, dentro de um orçamento.",
             );
           if (old?.merged_into)
             throw new Error(
               "Este cadastro foi unificado. Edite o serviço principal.",
             );
           input.cost_known = 1;
+          if (!old) input.stock_verified = 1;
           if (old && old.kind !== input.kind)
             throw new Error("O tipo do item não pode ser alterado.");
           if (input.kind === "service") {
@@ -783,6 +831,10 @@ export function createApp(db: DB) {
           .max(100000)
           .refine((n) => n !== 0),
         reason: z.string().trim().min(5).max(200),
+        cost: integer.optional(),
+        freight_unit: integer.optional(),
+        price: integer.optional(),
+        request_id: z.string().uuid().optional(),
       })
       .parse(req.body);
     await transaction(db, async () => {
@@ -792,8 +844,49 @@ export function createApp(db: DB) {
         ctx.tenantId,
         String(req.params.id),
       );
-      if (item.kind !== "product" || !item.active)
+      if (item.kind !== "product" || !item.active || item.archived_at)
         throw new Error("Selecione um produto ativo.");
+      if (
+        (input.cost !== undefined ||
+          input.price !== undefined ||
+          input.freight_unit !== undefined) &&
+        input.quantity < 0
+      )
+        throw new Error("Atualize custo e venda ao registrar uma entrada.");
+      if (
+        (input.freight_unit ?? item.freight_unit ?? 0) >
+        (input.cost ?? item.cost)
+      )
+        throw new Error("O custo total deve incluir o frete.");
+      if (input.request_id) {
+        const prior = await db
+          .prepare("SELECT * FROM stock_movements WHERE id=? AND tenant_id=?")
+          .get(input.request_id, ctx.tenantId);
+        if (prior) {
+          if (
+            prior.catalog_id !== item.id ||
+            prior.quantity !== input.quantity ||
+            prior.reason !== input.reason ||
+            prior.unit_cost !== (input.cost ?? null) ||
+            prior.unit_price !== (input.price ?? null) ||
+            prior.freight_unit !== (input.freight_unit ?? null)
+          )
+            throw new Error("Entrada já registrada com outros valores.");
+          return;
+        }
+      }
+      if (input.cost !== undefined || input.price !== undefined)
+        await db
+          .prepare(
+            "UPDATE catalog SET cost=?,price=?,cost_known=1,freight_unit=? WHERE tenant_id=? AND id=?",
+          )
+          .run(
+            input.cost ?? item.cost,
+            input.price ?? item.price,
+            input.freight_unit ?? item.freight_unit,
+            ctx.tenantId,
+            item.id,
+          );
       if (item.stock + input.quantity < 0)
         throw new Error("O estoque não pode ficar negativo.");
       await db
@@ -803,15 +896,18 @@ export function createApp(db: DB) {
         .run(input.quantity, ctx.tenantId, item.id);
       await db
         .prepare(
-          "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?)",
+          "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id,unit_cost,unit_price,freight_unit) VALUES(?,?,?,?,?,?,?,?,?)",
         )
         .run(
-          id(),
+          input.request_id || id(),
           ctx.tenantId,
           item.id,
           input.quantity,
           input.reason,
           ctx.userId,
+          input.cost ?? null,
+          input.price ?? null,
+          input.freight_unit ?? null,
         );
       await audit(db, ctx, "stock.adjusted", item.id);
     });

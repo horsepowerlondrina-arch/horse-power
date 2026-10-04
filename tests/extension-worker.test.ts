@@ -257,3 +257,40 @@ test("Sky parser rejects ambiguous fallback prices instead of guessing the large
     10,
   );
 });
+
+test("catalog destinations advertise capability and cannot receive pending order captures", async () => {
+  const w = worker();
+  await w.send(connect, app);
+  w.setFail(true);
+  await w.send(
+    { type: "HP_CAPTURE", item: { capture_id: randomUUID(), name: "Peça" } },
+    sky,
+  );
+  await w.send({ type: "HP_DISCONNECT", orderId: "o" }, app);
+  assert.equal(
+    (
+      await w.send(
+        {
+          ...connect,
+          target: {
+            ...connect.target,
+            destination: "catalog",
+            label: "Catálogo",
+            plate: "",
+            number: 0,
+          },
+        },
+        app,
+      )
+    ).ok,
+    true,
+  );
+  const status = await w.send({ type: "HP_STATUS" }, popup);
+  assert.equal(status.catalogCapture, true);
+  assert.equal(status.label, "Catálogo");
+  assert.equal(status.token, undefined);
+  w.setFail(false);
+  const count = w.calls.length;
+  assert.equal((await w.send({ type: "HP_RETRY" }, popup)).ok, false);
+  assert.equal(w.calls.length, count);
+});

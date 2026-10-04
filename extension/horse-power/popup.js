@@ -9,13 +9,13 @@ async function load() {
   document.getElementById("plate").textContent = vehicle.connected
     ? vehicle.plate
       ? "Placa do orçamento: " + vehicle.plate
-      : "Este orçamento ainda não tem uma placa válida."
+      : "Destino sem placa. Selecione o veículo no Tempario."
     : "";
   document.getElementById("tempario").disabled = !vehicle.connected;
   document.getElementById("status").textContent =
     (s.connected
-      ? "Conectado ao orçamento #" + s.number
-      : "Abra um orçamento e clique em Adicionar produto ou Adicionar serviço.") +
+      ? "Conectado: " + (s.label || `Atendimento #${s.number}`)
+      : "Abra o catálogo, orçamento ou OS e conecte a extensão.") +
     " · " +
     s.pending +
     " envio(s) pendente(s)";

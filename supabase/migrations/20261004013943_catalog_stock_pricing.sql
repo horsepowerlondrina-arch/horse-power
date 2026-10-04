@@ -1,0 +1,17 @@
+BEGIN;
+ALTER TABLE horse_power.capture_sessions ALTER COLUMN order_id DROP NOT NULL;
+ALTER TABLE horse_power.capture_sessions ADD COLUMN catalog_target TEXT;
+ALTER TABLE horse_power.external_captures ALTER COLUMN order_id DROP NOT NULL;
+ALTER TABLE horse_power.external_captures ALTER COLUMN item_id DROP NOT NULL;
+ALTER TABLE horse_power.external_captures ADD COLUMN catalog_target TEXT;
+CREATE INDEX idx_external_captures_catalog_target ON horse_power.external_captures(tenant_id,catalog_target);
+ALTER TABLE horse_power.tenants ADD COLUMN parts_pricing_mode TEXT NOT NULL DEFAULT 'legacy' CHECK(parts_pricing_mode IN ('legacy','markup','margin'));
+ALTER TABLE horse_power.tenants ADD COLUMN parts_pricing_bps INTEGER NOT NULL DEFAULT 4000 CHECK(parts_pricing_bps>=0 AND parts_pricing_bps<=100000);
+INSERT INTO horse_power.migrations(version) VALUES(9);
+ALTER TABLE horse_power.stock_movements ADD COLUMN unit_cost INTEGER;
+ALTER TABLE horse_power.stock_movements ADD COLUMN unit_price INTEGER;
+ALTER TABLE horse_power.tenants ADD COLUMN parts_pricing_rules TEXT;
+ALTER TABLE horse_power.capture_sessions ADD COLUMN freight_unit INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE horse_power.catalog ADD COLUMN freight_unit INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE horse_power.stock_movements ADD COLUMN freight_unit INTEGER;
+COMMIT;

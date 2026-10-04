@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Horse Power · Conector",
-  "version": "1.1.0",
-  "description": "Envie peças do Sky e serviços do Tempario ao orçamento da Horse Power.",
+  "version": "1.2.0",
+  "description": "Envie peças do Sky e serviços do Tempario ao catálogo, orçamento e OS da Horse Power.",
   "permissions": ["storage"],
   "host_permissions": [
     "https://horse-power.vercel.app/*",

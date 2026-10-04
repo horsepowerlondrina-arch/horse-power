@@ -1,3 +1,7 @@
+import { PartsPricing } from "./PartsPricing";
+import { RegisterModal } from "./Registers";
+import { CapturePanel } from "../components/CapturePanel";
+import { StockEntry } from "../components/StockEntry";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -27,6 +31,9 @@ import {
 export function Stock() {
   const { data, refresh, notify } = useApp();
   const [params] = useSearchParams();
+  const [adding, setAdding] = useState(false),
+    [capture, setCapture] = useState(false);
+  const [entry, setEntry] = useState<Entity | null | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [low, setLow] = useState(params.has("low"));
   const [tab, setTab] = useState("balance");
@@ -61,6 +68,19 @@ export function Stock() {
       <PageHeading
         eyebrow="GESTÃO"
         title="Estoque"
+        actions={
+          <>
+            <button className="button" onClick={() => setCapture(true)}>
+              Importar do Sky
+            </button>
+            <button className="button" onClick={() => setAdding(true)}>
+              Novo produto
+            </button>
+            <button className="button primary" onClick={() => setEntry(null)}>
+              Entrada em estoque
+            </button>
+          </>
+        }
         description="As peças certas, na quantidade certa. Sem perder o controle."
       />
       <div className="stats-grid three">
@@ -129,6 +149,7 @@ export function Stock() {
                     <th>Referência</th>
                     <th>Disponível</th>
                     <th>Mínimo</th>
+                    <th>Custo / venda unitários</th>
                     <th>Valor em estoque</th>
                     <th>Ação</th>
                   </tr>
@@ -153,6 +174,10 @@ export function Stock() {
                         </span>
                       </td>
                       <td>{p.minimum_stock} un.</td>
+                      <td>
+                        {money(p.cost)} / {money(p.price)}
+                        <small>Ganho bruto: {money(p.price - p.cost)}</small>
+                      </td>
                       <td>
                         {p.stock_verified === 0 || p.cost_known === 0
                           ? "A conferir"
@@ -228,6 +253,35 @@ export function Stock() {
             : "Movimentações registradas com responsável e origem"}
         </div>
       </section>
+      {adding && (
+        <RegisterModal
+          kind="catalog"
+          initial={{ kind: "product" }}
+          record={null}
+          onClose={() => setAdding(false)}
+        />
+      )}
+      {entry !== undefined && (
+        <StockEntry
+          initial={entry || undefined}
+          onClose={() => setEntry(undefined)}
+        />
+      )}
+      {capture && (
+        <CapturePanel
+          catalog
+          source="sky"
+          onClose={async (items) => {
+            await refresh();
+            setCapture(false);
+            if (items.length === 1) setEntry(items[0]);
+            else if (items.length)
+              notify(
+                "Produtos importados. Use Entrada em estoque para confirmar as quantidades recebidas.",
+              );
+          }}
+        />
+      )}
       {editing && (
         <Modal
           title="Ajustar estoque"
@@ -485,6 +539,7 @@ export function Finance() {
   );
 }
 export function Settings() {
+  const [params, setParams] = useSearchParams();
   const { session, data, refresh, notify } = useApp();
   const [rates, setRates] = useState({
     debit_fee_bps: data.payment_settings?.debit_fee_bps || 0,
@@ -500,156 +555,180 @@ export function Settings() {
         title="Configurações"
         description="Sua oficina e a base para os próximos passos."
       />
-      <form
-        className="panel work-order-section"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          setError("");
-          try {
-            await send("/payment-settings", rates, "PUT");
-            await refresh();
-            notify("Taxas padrão salvas para esta oficina.");
-          } catch (e) {
-            setError((e as Error).message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <h2>Taxas e parcelamento</h2>
-        <p className="muted">
-          Valores padrão da oficina. Você pode ajustá-los ao definir cada
-          recebimento.
-        </p>
-        <div className="form-grid">
-          {(
-            [
-              ["debit_fee_bps", "Taxa da oficina — débito (%)"],
-              ["credit_fee_bps", "Taxa da oficina — crédito (%)"],
-              ["interest_bps", "Juros totais do cliente — parcelamento (%)"],
-            ] as const
-          ).map(([key, label]) => (
-            <Field key={key} label={label}>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step="0.01"
-                required
-                value={rates[key] / 100}
-                onChange={(e) =>
-                  setRates({
-                    ...rates,
-                    [key]: Math.round(Number(e.target.value) * 100),
-                  })
-                }
-              />
-            </Field>
-          ))}
-        </div>
-        {error && (
-          <div role="alert" className="error-box">
-            {error}
-          </div>
-        )}
-        <button className="button primary" disabled={busy}>
-          Salvar taxas
+      <div className="tabs">
+        <button
+          className={params.get("aba") !== "pecas" ? "active" : ""}
+          onClick={() => setParams({})}
+        >
+          Geral e taxas
         </button>
-      </form>
-      {!!data.card_rates?.length && (
-        <section className="panel work-order-section">
-          <h2>Taxas Banco Inter por parcela</h2>
-          <p className="muted">
-            Tabela enviada pela Horse Power. No recebimento, a taxa é aplicada
-            conforme o número de parcelas. O repasse usa a taxa real para
-            preservar o líquido, evitando a diferença dos fatores arredondados
-            do PDF.
-          </p>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Modalidade</th>
-                  <th>Parcelas</th>
-                  <th>Taxa da operadora</th>
-                  <th>Fator de referência do PDF</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.card_rates.map((r) => (
-                  <tr key={r.method + r.installments}>
-                    <td>{r.method}</td>
-                    <td>{r.installments}x</td>
-                    <td>{(r.fee_bps / 100).toFixed(2)}%</td>
-                    <td>{(r.factor_bps / 10000).toFixed(4)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-      <div className="settings-grid">
-        <section className="panel settings-card">
-          <Building2 size={23} />
-          <h2>{session.tenant.name}</h2>
-          <p>{session.tenant.address}</p>
-          <p>{session.tenant.phone}</p>
-          <div className="info-box">
-            Os dados pertencem à Horse Power. A configuração definitiva do login
-            será feita em uma próxima etapa.
-          </div>
-        </section>
-        <section className="panel settings-card">
-          <ShieldCheck size={23} />
-          <h2>Acesso e conta</h2>
-          <p>{session.user.name} · Administrador</p>
-          <p>{session.user.email}</p>
-          <p className="muted">
-            Gestão de convites, edição da empresa e permissões detalhadas serão
-            adicionadas na próxima etapa.
-          </p>
-        </section>
-        <section className="panel settings-card full">
-          <Layers3 size={23} />
-          <h2>Evolução dos módulos</h2>
-          <p>
-            A fundação concentra o atendimento, os cadastros e os recebimentos.
-            Os próximos incrementos serão desenvolvidos por fluxo.
-          </p>
-          <div className="roadmap-grid">
-            {[
-              [
-                "01",
-                "Atendimento ampliado",
-                "Checklist, comissões e diagnóstico detalhado.",
-              ],
-              [
-                "02",
-                "Compras e vendas",
-                "Fornecedores, compras e venda rápida integradas ao estoque.",
-              ],
-              [
-                "03",
-                "Gestão financeira",
-                "Plano de contas, retiradas e relatórios ampliados.",
-              ],
-              [
-                "04",
-                "Organização e SaaS",
-                "Agenda, convites, configurações e preparação comercial.",
-              ],
-            ].map(([n, t, d]) => (
-              <div key={n}>
-                <span>{n}</span>
-                <h3>{t}</h3>
-                <p>{d}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+        <button
+          className={params.get("aba") === "pecas" ? "active" : ""}
+          onClick={() => setParams({ aba: "pecas" })}
+        >
+          Lucro das peças
+        </button>
       </div>
+      {params.get("aba") === "pecas" ? (
+        <PartsPricing />
+      ) : (
+        <>
+          <form
+            className="panel work-order-section"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              setError("");
+              try {
+                await send("/payment-settings", rates, "PUT");
+                await refresh();
+                notify("Taxas padrão salvas para esta oficina.");
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <h2>Taxas e parcelamento</h2>
+            <p className="muted">
+              Valores padrão da oficina. Você pode ajustá-los ao definir cada
+              recebimento.
+            </p>
+            <div className="form-grid">
+              {(
+                [
+                  ["debit_fee_bps", "Taxa da oficina — débito (%)"],
+                  ["credit_fee_bps", "Taxa da oficina — crédito (%)"],
+                  [
+                    "interest_bps",
+                    "Juros totais do cliente — parcelamento (%)",
+                  ],
+                ] as const
+              ).map(([key, label]) => (
+                <Field key={key} label={label}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    required
+                    value={rates[key] / 100}
+                    onChange={(e) =>
+                      setRates({
+                        ...rates,
+                        [key]: Math.round(Number(e.target.value) * 100),
+                      })
+                    }
+                  />
+                </Field>
+              ))}
+            </div>
+            {error && (
+              <div role="alert" className="error-box">
+                {error}
+              </div>
+            )}
+            <button className="button primary" disabled={busy}>
+              Salvar taxas
+            </button>
+          </form>
+          {!!data.card_rates?.length && (
+            <section className="panel work-order-section">
+              <h2>Taxas Banco Inter por parcela</h2>
+              <p className="muted">
+                Tabela enviada pela Horse Power. No recebimento, a taxa é
+                aplicada conforme o número de parcelas. O repasse usa a taxa
+                real para preservar o líquido, evitando a diferença dos fatores
+                arredondados do PDF.
+              </p>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Modalidade</th>
+                      <th>Parcelas</th>
+                      <th>Taxa da operadora</th>
+                      <th>Fator de referência do PDF</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.card_rates.map((r) => (
+                      <tr key={r.method + r.installments}>
+                        <td>{r.method}</td>
+                        <td>{r.installments}x</td>
+                        <td>{(r.fee_bps / 100).toFixed(2)}%</td>
+                        <td>{(r.factor_bps / 10000).toFixed(4)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+          <div className="settings-grid">
+            <section className="panel settings-card">
+              <Building2 size={23} />
+              <h2>{session.tenant.name}</h2>
+              <p>{session.tenant.address}</p>
+              <p>{session.tenant.phone}</p>
+              <div className="info-box">
+                Os dados pertencem à Horse Power. A configuração definitiva do
+                login será feita em uma próxima etapa.
+              </div>
+            </section>
+            <section className="panel settings-card">
+              <ShieldCheck size={23} />
+              <h2>Acesso e conta</h2>
+              <p>{session.user.name} · Administrador</p>
+              <p>{session.user.email}</p>
+              <p className="muted">
+                Gestão de convites, edição da empresa e permissões detalhadas
+                serão adicionadas na próxima etapa.
+              </p>
+            </section>
+            <section className="panel settings-card full">
+              <Layers3 size={23} />
+              <h2>Evolução dos módulos</h2>
+              <p>
+                A fundação concentra o atendimento, os cadastros e os
+                recebimentos. Os próximos incrementos serão desenvolvidos por
+                fluxo.
+              </p>
+              <div className="roadmap-grid">
+                {[
+                  [
+                    "01",
+                    "Atendimento ampliado",
+                    "Checklist, comissões e diagnóstico detalhado.",
+                  ],
+                  [
+                    "02",
+                    "Compras e vendas",
+                    "Fornecedores, compras e venda rápida integradas ao estoque.",
+                  ],
+                  [
+                    "03",
+                    "Gestão financeira",
+                    "Plano de contas, retiradas e relatórios ampliados.",
+                  ],
+                  [
+                    "04",
+                    "Organização e SaaS",
+                    "Agenda, convites, configurações e preparação comercial.",
+                  ],
+                ].map(([n, t, d]) => (
+                  <div key={n}>
+                    <span>{n}</span>
+                    <h3>{t}</h3>
+                    <p>{d}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </>
+      )}
     </>
   );
 }

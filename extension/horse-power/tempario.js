@@ -214,7 +214,7 @@
     toast(
       r.duplicate
         ? "Serviço já enviado. Confira o orçamento na Horse Power."
-        : `Serviço e tempo salvos no orçamento #${r.number}`,
+        : `Serviço e tempo salvos: ${r.label || `Atendimento #${r.number}`}`,
     );
   }
   function inject() {

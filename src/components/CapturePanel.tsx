@@ -7,24 +7,32 @@ export function CapturePanel({
   orderId,
   source,
   onClose,
+  catalog = false,
 }: {
-  orderId: string;
+  orderId?: string;
+  catalog?: boolean;
   source: "sky" | "tempario";
   onClose: (items: Entity[]) => Promise<void>;
 }) {
+  const [catalogId] = useState(() => crypto.randomUUID());
+  const targetId = catalog ? catalogId : orderId!;
+  const stateUrl = catalog
+    ? `/catalog-capture/${targetId}`
+    : `/orders/${targetId}/capture-state`;
   const [connected, setConnected] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [items, setItems] = useState<Entity[]>([]),
     [number, setNumber] = useState<number>();
   const [expires, setExpires] = useState(0);
+  const [freight, setFreight] = useState(0);
   const [plate, setPlate] = useState("");
   const [plateAutofill, setPlateAutofill] = useState(false);
   useEffect(() => {
     let current = true;
     async function load() {
       try {
-        const r = await api(`/orders/${orderId}/capture-state`);
+        const r = await api(stateUrl);
         if (current) setItems(r.items);
       } catch (e) {
         if (current) setError((e as Error).message);
@@ -36,14 +44,25 @@ export function CapturePanel({
       current = false;
       clearInterval(timer);
     };
-  }, [orderId]);
+  }, [stateUrl]);
   async function connect() {
     setBusy(true);
     setError("");
     try {
       const extension = await extensionMessage("HP_STATUS");
-      const target = await send(`/orders/${orderId}/capture-session`, {});
-      await extensionMessage("HP_CONNECT", { target: { ...target, orderId } });
+      if (catalog && !extension.catalogCapture)
+        throw new Error(
+          "Atualize o Conector Horse Power para a versão 1.2 e recarregue a página.",
+        );
+      const target = await send(
+        catalog
+          ? `/catalog-capture/${targetId}/start`
+          : `/orders/${targetId}/capture-session`,
+        { freight_unit: source === "sky" ? freight : 0 },
+      );
+      await extensionMessage("HP_CONNECT", {
+        target: { ...target, orderId: targetId },
+      });
       setNumber(target.number);
       setPlate(target.plate);
       setPlateAutofill(extension.plateAutofill === true);
@@ -60,9 +79,14 @@ export function CapturePanel({
     setBusy(true);
     setError("");
     try {
-      const state = await send(`/orders/${orderId}/end-capture`, {});
+      const state = await send(
+        catalog
+          ? `/catalog-capture/${targetId}/end`
+          : `/orders/${targetId}/end-capture`,
+        {},
+      );
       try {
-        await extensionMessage("HP_DISCONNECT", { orderId });
+        await extensionMessage("HP_DISCONNECT", { orderId: targetId });
       } catch {
         /* Server already revoked the scoped connection. */
       }
@@ -79,14 +103,18 @@ export function CapturePanel({
           ? "Adicionar produto do Sky Peças"
           : "Adicionar serviço do Tempario"
       }
-      description="Os itens enviados pela extensão são salvos neste orçamento e no catálogo da oficina."
+      description={
+        catalog
+          ? "Envie itens ao catálogo sem precisar abrir um orçamento. Depois, confirme as entradas físicas no estoque."
+          : "Os itens são salvos neste atendimento e no catálogo da oficina."
+      }
       onClose={() => void close()}
     >
       <div className="modal-body capture-panel">
         <p>
           {connected
-            ? `Conectado ao orçamento #${number}. Vá ao fornecedor e clique em HP • Enviar no item desejado.`
-            : "Conecte a extensão para definir este orçamento como destino dos envios."}
+            ? `Conectado ${catalog ? "ao catálogo" : `ao atendimento #${number}`}. Vá ao fornecedor e clique em HP • Enviar no item desejado.`
+            : "Conecte a extensão para definir esta tela como destino dos envios."}
         </p>
         {connected && (
           <p className="muted">
@@ -97,6 +125,25 @@ export function CapturePanel({
             })}
             . Ao terminar, clique em Concluir captura.
           </p>
+        )}
+        {source === "sky" && (
+          <label className="field">
+            Frete por unidade (R$)
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              disabled={connected}
+              value={freight / 100}
+              onChange={(e) =>
+                setFreight(Math.round(Number(e.target.value) * 100))
+              }
+            />
+            <small>
+              Aplicado a cada peça desta captura. Para outro frete, conclua e
+              abra uma nova captura.
+            </small>
+          </label>
         )}
         <div className="capture-actions">
           <button
@@ -122,7 +169,7 @@ export function CapturePanel({
             </a>
           )}
         </div>
-        {connected && source === "tempario" && (
+        {connected && !catalog && source === "tempario" && (
           <p className="muted">
             {!plateAutofill ? (
               <>
@@ -169,7 +216,10 @@ export function CapturePanel({
             {error}
           </p>
         )}
-        <h3>Itens do orçamento · {items.length}</h3>
+        <h3>
+          {catalog ? "Itens recebidos" : "Itens do atendimento"} ·{" "}
+          {items.length}
+        </h3>
         <div className="capture-list">
           {items.map((i) => (
             <div key={i.id}>
@@ -186,21 +236,22 @@ export function CapturePanel({
                     : ""}
                 </small>
               </span>
-              <b>{money(i.price * i.quantity)}</b>
+              <span>
+                <b>{money(i.price * i.quantity)}</b>
+                {i.kind === "product" && (
+                  <small>
+                    Custo: {money(i.cost)} · Lucro/un.:{" "}
+                    {money(i.price - i.cost)}
+                  </small>
+                )}
+              </span>
             </div>
           ))}
         </div>
         <p className="muted">
-          Peças entram com preço sugerido pelas regras da extensão original.
-          Depois de concluir a captura, revise os preços no orçamento. O saldo
-          do fornecedor não entra no estoque da oficina.
-        </p>
-        <p className="muted">
-          Serviços e tempos ficam disponíveis em{" "}
-          <a href="/tempos" target="_blank" rel="noreferrer">
-            Tempos de serviço
-          </a>
-          , com o veículo de referência.
+          O custo do Sky e o preço sugerido pela configuração de lucro ficam
+          salvos no catálogo. Confira os valores antes de vender. A
+          disponibilidade do fornecedor não representa o estoque da oficina.
         </p>
       </div>
       <div className="modal-footer">

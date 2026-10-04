@@ -9,6 +9,7 @@ export function migrate(db: DatabaseSync) {
     [6, "006-cloud-access.sql"],
     [7, "007-extension.sql"],
     [8, "008-extension-catalog.sql"],
+    [9, "009-catalog-stock-pricing.sql"],
   ] as const) {
     if (db.prepare("SELECT 1 FROM migrations WHERE version=?").get(version))
       continue;

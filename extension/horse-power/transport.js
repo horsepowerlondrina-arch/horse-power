@@ -10,7 +10,7 @@ window.hpSendCapture = async (item) => {
 window.hpCaptureStatus = async () => {
   const response = await chrome.runtime.sendMessage({ type: "HP_STATUS" });
   return response?.connected
-    ? `Orçamento #${response.number}`
+    ? response.label || `Atendimento #${response.number}`
     : "Conecte um orçamento na Horse Power";
 };
 window.hpOpenQuote = () => chrome.runtime.sendMessage({ type: "HP_OPEN" });

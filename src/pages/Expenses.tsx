@@ -24,6 +24,7 @@ export function FinanceNav() {
       <Link to="/financeiro">Contas a pagar</Link>
       <Link to="/financeiro/receber">Contas a receber</Link>
       <Link to="/financeiro/caixa">Caixa</Link>
+      <Link to="/financeiro/pecas">Lucro das peças</Link>
     </div>
   );
 }

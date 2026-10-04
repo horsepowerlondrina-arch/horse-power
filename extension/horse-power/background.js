@@ -23,10 +23,11 @@ async function deliver(entry) {
   if (
     !target ||
     target.orderId !== entry.orderId ||
+    (target.destination || "order") !== (entry.destination || "order") ||
     target.origin !== entry.origin
   )
     throw new Error(
-      "Conecte novamente o orçamento original. O item não foi enviado.",
+      "Conecte novamente o destino original. O item não foi enviado.",
     );
   const response = await fetch(target.origin + "/api/extension/import", {
     method: "POST",
@@ -55,11 +56,23 @@ async function handle(msg, sender) {
     )
       throw new Error("Conexão inválida.");
     const { target: old } = await chrome.storage.session.get("target");
-    if (old && (old.orderId !== msg.target.orderId || old.origin !== origin))
+    if (
+      old &&
+      (old.orderId !== msg.target.orderId ||
+        old.origin !== origin ||
+        (old.destination || "order") !== (msg.target.destination || "order"))
+    )
       throw new Error(
-        "Encerre a conexão do outro orçamento antes de trocar o destino.",
+        "Encerre a conexão do outro destino antes de trocar o destino.",
       );
     const target = {
+      destination: msg.target.destination === "catalog" ? "catalog" : "order",
+      label:
+        msg.target.destination === "catalog"
+          ? "Catálogo"
+          : String(
+              msg.target.label || `Atendimento #${msg.target.number}`,
+            ).slice(0, 100),
       token: msg.target.token,
       number: msg.target.number,
       orderId: msg.target.orderId,
@@ -72,7 +85,9 @@ async function handle(msg, sender) {
       expires: Date.now() + 1800000,
     };
     await chrome.storage.session.set({ target });
-    await chrome.action.setBadgeText({ text: String(target.number) });
+    await chrome.action.setBadgeText({
+      text: target.destination === "catalog" ? "CAT" : String(target.number),
+    });
     await chrome.action.setBadgeBackgroundColor({ color: "#c8202c" });
     return { ok: true, number: target.number };
   }
@@ -85,6 +100,8 @@ async function handle(msg, sender) {
       number: target?.number,
       pending: pending.length,
       plateAutofill: true,
+      catalogCapture: true,
+      label: target?.label,
     };
   }
   if (
@@ -122,7 +139,7 @@ async function handle(msg, sender) {
       return { ok: true };
     if (isPopup && target)
       throw new Error(
-        "Encerre a captura na tela do orçamento para guardar os itens recebidos.",
+        "Encerre a captura na tela de origem para guardar os itens recebidos.",
       );
     await chrome.storage.session.remove("target");
     await chrome.action.setBadgeText({ text: "" });
@@ -132,12 +149,13 @@ async function handle(msg, sender) {
     const { target } = await chrome.storage.session.get("target");
     if (!target || target.expires < Date.now())
       throw new Error(
-        "Abra um orçamento na Horse Power e conecte a extensão primeiro.",
+        "Abra o catálogo, orçamento ou OS na Horse Power e conecte a extensão primeiro.",
       );
     const item = { ...msg.item, source: sources[origin] };
     const entry = {
       id: item.capture_id,
       orderId: target.orderId,
+      destination: target.destination || "order",
       origin: target.origin,
       item,
       number: target.number,
@@ -182,9 +200,9 @@ async function handle(msg, sender) {
         await chrome.tabs.create({
           url:
             target.origin +
-            "/ordens/" +
-            encodeURIComponent(target.orderId) +
-            "/editar",
+            (target.destination === "catalog"
+              ? "/catalogo"
+              : "/ordens/" + encodeURIComponent(target.orderId) + "/editar"),
         });
       }
     } else

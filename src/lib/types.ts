@@ -20,6 +20,15 @@ export type Order = Entity & {
   items: Entity[];
 };
 export interface Workspace {
+  parts_pricing?: {
+    mode: "legacy" | "markup" | "margin";
+    rate_bps: number;
+    rules: {
+      up_to: number | null;
+      markup_bps: number;
+      minimum_profit: number;
+    }[];
+  };
   catalog_mode?: "standard" | "extension";
   customers: Entity[];
   vehicles: Entity[];

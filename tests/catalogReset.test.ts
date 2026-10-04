@@ -122,7 +122,7 @@ test("archived items remain editable in their original quote but cannot be added
     db.close();
   }
 });
-test("HTTP hides archived catalog and times, blocks manual creation/reactivation, and permits editing imported prices", async () => {
+test("HTTP hides archived catalog and times, permits new manual creation but blocks reactivation, and permits editing imported prices", async () => {
   const db = fixture();
   const token = await beginCapture(db, ctx, "fresh", "session");
   await importCapture(db, token.token, capture());
@@ -159,8 +159,7 @@ test("HTTP hides archived catalog and times, blocks manual creation/reactivation
       headers,
       body: JSON.stringify(item),
     });
-    assert.equal(r.status, 400);
-    assert.match((await r.json()).error, /extensão/);
+    assert.equal(r.status, 200);
     r = await fetch(base + "/catalog/service", {
       method: "PUT",
       headers,

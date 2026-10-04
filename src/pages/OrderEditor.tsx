@@ -161,7 +161,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     try {
       const result = await send(
         `/orders${savedId ? `/${savedId}` : ""}`,
-        { ...form, status: "quote" },
+        { ...form, status: form.status === "quote" ? "quote" : "open" },
         savedId ? "PUT" : "POST",
       );
       setSavedId(result.id);
@@ -557,7 +557,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                 </>
               ) : tab === "items" ? (
                 <>
-                  {!locked && form.status === "quote" && (
+                  {!locked && (
                     <div className="capture-actions">
                       <button
                         type="button"
@@ -603,9 +603,8 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                       : "Serviços do atendimento"}
                   </h3>
                   <p className="muted">
-                    {data.catalog_mode === "extension"
-                      ? "Importe pela extensão ou reutilize os itens já recebidos. Atribua os serviços à sua equipe."
-                      : "Adicione itens do catálogo e atribua os serviços à sua equipe."}
+                    Cadastre um item, importe pela extensão ou reutilize seu
+                    catálogo. Atribua os serviços à sua equipe.
                   </p>
                   {!locked && (
                     <div className="item-picker">
@@ -617,7 +616,6 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                         )}
                         value={pick}
                         onChange={setPick}
-                        extensionOnly={data.catalog_mode === "extension"}
                       />
                       <button
                         className="button primary"
@@ -630,7 +628,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                       </button>
                     </div>
                   )}
-                  {!locked && data.catalog_mode !== "extension" && (
+                  {!locked && (
                     <button
                       type="button"
                       className="text-button"

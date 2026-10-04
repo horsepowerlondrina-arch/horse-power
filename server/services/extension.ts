@@ -5,6 +5,7 @@ import { digest, type Context } from "../auth/session.js";
 import { requireAdmin } from "./payments.js";
 import { audit, id, scoped } from "./workshop.js";
 import { serviceNameKey } from "./serviceCatalog.js";
+import { workshopPrice } from "./partsPricing.js";
 const txt = z.string().trim().max(300).default("");
 export const captureSchema = z
   .object({
@@ -36,36 +37,25 @@ export const captureSchema = z
         message: "Confira o tempo e o valor do serviço.",
       });
   });
-export function suggestedPrice(cost: number) {
-  if (cost <= 2000) return Math.max(Math.round(cost * 1.8), cost + 800);
-  if (cost <= 5000) return Math.max(Math.round(cost * 1.6), cost + 1000);
-  if (cost <= 10000) return Math.max(Math.round(cost * 1.5), cost + 2000);
-  return Math.round(
-    cost *
-      (cost <= 25000
-        ? 1.45
-        : cost <= 50000
-          ? 1.4
-          : cost <= 100000
-            ? 1.35
-            : 1.3),
-  );
-}
+export { legacyPrice as suggestedPrice } from "./partsPricing.js";
 export async function beginCapture(
   db: DB,
   ctx: Context,
   orderId: string,
   sessionToken: string,
+  freightUnit = 0,
 ) {
   requireAdmin(ctx);
   return transaction(db, async () => {
     const order = await scoped(db, "orders", ctx.tenantId, orderId);
-    if (order.kind !== "quote" || order.status !== "quote")
-      throw new Error("A captura está disponível em orçamentos em elaboração.");
+    if (["completed", "cancelled"].includes(order.status))
+      throw new Error(
+        "A captura está disponível em orçamentos e OS em andamento.",
+      );
     const vehicle = order.vehicle_id
       ? await scoped(db, "vehicles", ctx.tenantId, order.vehicle_id)
       : null;
-    const plate = String(vehicle?.plate || order.guest_plate || "")
+    const plate = String(vehicle?.plate || order?.guest_plate || "")
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "");
     const token = randomBytes(32).toString("hex");
@@ -76,7 +66,7 @@ export async function beginCapture(
       .run(ctx.tenantId, orderId, Date.now());
     await db
       .prepare(
-        "INSERT INTO capture_sessions(token_hash,tenant_id,user_id,session_hash,order_id,expires_at) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO capture_sessions(token_hash,tenant_id,user_id,session_hash,order_id,expires_at,freight_unit) VALUES(?,?,?,?,?,?,?)",
       )
       .run(
         digest(token),
@@ -85,9 +75,12 @@ export async function beginCapture(
         digest(sessionToken),
         orderId,
         Date.now() + 1800000,
+        freightUnit,
       );
     return {
       token,
+      destination: "order",
+      label: `${order.kind === "quote" ? "Orçamento" : "OS"} #${order.number}`,
       number: order.number,
       plate: /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(plate) ? plate : "",
       expires_minutes: 30,
@@ -139,9 +132,16 @@ export async function importCapture(db: DB, token: string, input: unknown) {
       userId: String(s.user_id),
       role: "owner",
     };
-    const order = await scoped(db, "orders", ctx.tenantId, s.order_id);
-    if (order.kind !== "quote" || order.status !== "quote")
-      throw new Error("Este orçamento não aceita mais capturas.");
+    const order = s.order_id
+      ? await scoped(db, "orders", ctx.tenantId, s.order_id)
+      : null;
+    if (!order && !s.catalog_target)
+      throw new Error("Destino da captura inválido.");
+    const labelText = order
+      ? `${order.kind === "quote" ? "Orçamento" : "OS"} #${order.number}`
+      : "Catálogo";
+    if (order && ["completed", "cancelled"].includes(order.status))
+      throw new Error("Este atendimento não aceita mais capturas.");
     const hash = digest(JSON.stringify(v));
     const prior = await db
       .prepare(
@@ -149,15 +149,24 @@ export async function importCapture(db: DB, token: string, input: unknown) {
       )
       .get(ctx.tenantId, v.capture_id);
     if (prior) {
-      if (prior.order_id !== order.id || prior.payload_hash !== hash)
+      if (
+        prior.order_id !== (order?.id ?? null) ||
+        prior.catalog_target !== (s.catalog_target ?? null) ||
+        prior.payload_hash !== hash
+      )
         throw new Error("Identificação de captura já utilizada.");
-      return { ok: true, duplicate: true, number: order.number };
+      return {
+        ok: true,
+        duplicate: true,
+        number: order?.number,
+        label: labelText,
+      };
     }
-    const vehicle = order.vehicle_id
+    const vehicle = order?.vehicle_id
       ? await scoped(db, "vehicles", ctx.tenantId, order.vehicle_id)
       : null;
     const plateKey = (x: string) => x.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const targetPlate = plateKey(vehicle?.plate || order.guest_plate || "");
+    const targetPlate = plateKey(vehicle?.plate || order?.guest_plate || "");
     if (
       v.vehicle.plate &&
       targetPlate &&
@@ -202,7 +211,14 @@ export async function importCapture(db: DB, token: string, input: unknown) {
       throw new Error(
         "Este item está inativo no catálogo. Reative-o antes de importar.",
       );
-    const price = v.source === "sky" ? suggestedPrice(v.cost) : v.price;
+    const landedCost =
+      v.cost + (v.source === "sky" ? Number(s.freight_unit || 0) : 0);
+    if (landedCost > 100000000)
+      throw new Error("Custo com frete acima do limite.");
+    const price =
+      v.source === "sky"
+        ? await workshopPrice(db, ctx.tenantId, landedCost)
+        : v.price;
     if (!catalog) {
       const catalogId = id();
       await db
@@ -216,11 +232,19 @@ export async function importCapture(db: DB, token: string, input: unknown) {
           v.name,
           `EXT-${catalogId.slice(0, 12)}`,
           v.source === "sky" ? "Sky Peças" : "Tempario",
-          v.cost,
+          landedCost,
           price,
           v.source === "sky" ? 1 : 0,
         );
       catalog = await scoped(db, "catalog", ctx.tenantId, catalogId);
+    }
+    if (v.source === "sky") {
+      await db
+        .prepare(
+          "UPDATE catalog SET cost=?,price=?,cost_known=1,freight_unit=? WHERE tenant_id=? AND id=?",
+        )
+        .run(landedCost, price, s.freight_unit || 0, ctx.tenantId, catalog.id);
+      catalog = { ...catalog, cost: landedCost, price };
     }
     await db
       .prepare(
@@ -228,35 +252,44 @@ export async function importCapture(db: DB, token: string, input: unknown) {
       )
       .run(ctx.tenantId, v.source, key, catalog.id);
     // A repeated click never increments quantities silently. Quantities are edited in the quote.
-    const same = await db
-      .prepare(
-        "SELECT i.id FROM external_captures e JOIN order_items i ON i.id=e.item_id AND i.tenant_id=e.tenant_id WHERE e.tenant_id=? AND e.order_id=? AND e.source=? AND e.external_key=?",
-      )
-      .get(ctx.tenantId, order.id, v.source, key);
-    if (same) return { ok: true, duplicate: true, number: order.number };
-    const count = await db
-      .prepare(
-        "SELECT COUNT(*) n FROM order_items WHERE tenant_id=? AND order_id=?",
-      )
-      .get(ctx.tenantId, order.id);
-    if (Number(count?.n) >= 200)
-      throw new Error("O orçamento atingiu o limite de 200 itens.");
-    const itemId = id();
-    await db
-      .prepare(
-        "INSERT INTO order_items(id,tenant_id,order_id,catalog_id,professional_id,kind,name,quantity,price,cost) VALUES(?,?,?,?,NULL,?,?,?,?,?)",
-      )
-      .run(
-        itemId,
-        ctx.tenantId,
-        order.id,
-        catalog.id,
-        catalog.kind,
-        catalog.name,
-        v.quantity,
-        price,
-        v.source === "sky" ? v.cost : catalog.cost,
-      );
+    let itemId: string | null = null;
+    if (order) {
+      const same = await db
+        .prepare(
+          "SELECT i.id FROM external_captures e JOIN order_items i ON i.id=e.item_id AND i.tenant_id=e.tenant_id WHERE e.tenant_id=? AND e.order_id=? AND e.source=? AND e.external_key=?",
+        )
+        .get(ctx.tenantId, order.id, v.source, key);
+      if (same)
+        return {
+          ok: true,
+          duplicate: true,
+          number: order?.number,
+          label: labelText,
+        };
+      const count = await db
+        .prepare(
+          "SELECT COUNT(*) n FROM order_items WHERE tenant_id=? AND order_id=?",
+        )
+        .get(ctx.tenantId, order.id);
+      if (Number(count?.n) >= 200)
+        throw new Error("O orçamento atingiu o limite de 200 itens.");
+      itemId = id();
+      await db
+        .prepare(
+          "INSERT INTO order_items(id,tenant_id,order_id,catalog_id,professional_id,kind,name,quantity,price,cost) VALUES(?,?,?,?,NULL,?,?,?,?,?)",
+        )
+        .run(
+          itemId,
+          ctx.tenantId,
+          order.id,
+          catalog.id,
+          catalog.kind,
+          catalog.name,
+          v.quantity,
+          price,
+          v.source === "sky" ? landedCost : catalog.cost,
+        );
+    }
     const label = [
       v.vehicle.make,
       v.vehicle.model,
@@ -267,13 +300,13 @@ export async function importCapture(db: DB, token: string, input: unknown) {
       .join(" · ");
     await db
       .prepare(
-        "INSERT INTO external_captures(id,tenant_id,capture_id,order_id,item_id,catalog_id,source,external_key,payload_hash,duration_seconds,source_cost,source_price,vehicle_label) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO external_captures(id,tenant_id,capture_id,order_id,item_id,catalog_id,source,external_key,payload_hash,duration_seconds,source_cost,source_price,vehicle_label,catalog_target) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id(),
         ctx.tenantId,
         v.capture_id,
-        order.id,
+        order?.id ?? null,
         itemId,
         catalog.id,
         v.source,
@@ -283,6 +316,7 @@ export async function importCapture(db: DB, token: string, input: unknown) {
         v.cost,
         price,
         label,
+        s.catalog_target ?? null,
       );
     if (v.source === "tempario")
       await db
@@ -303,15 +337,81 @@ export async function importCapture(db: DB, token: string, input: unknown) {
           v.duration_seconds,
           v.price,
         );
-    await db
-      .prepare("UPDATE orders SET total=total+? WHERE tenant_id=? AND id=?")
-      .run(price * v.quantity, ctx.tenantId, order.id);
-    await audit(db, ctx, "extension.imported", order.id);
+    if (order)
+      await db
+        .prepare("UPDATE orders SET total=total+? WHERE tenant_id=? AND id=?")
+        .run(price * v.quantity, ctx.tenantId, order.id);
+    await audit(db, ctx, "extension.imported", order?.id || s.catalog_target);
     return {
       ok: true,
       duplicate: false,
-      number: order.number,
+      number: order?.number,
+      label: labelText,
       name: catalog.name,
     };
+  });
+}
+
+export async function beginCatalogCapture(
+  db: DB,
+  ctx: Context,
+  target: string,
+  sessionToken: string,
+  freightUnit = 0,
+) {
+  requireAdmin(ctx);
+  z.string().uuid().parse(target);
+  return transaction(db, async () => {
+    await db
+      .prepare(
+        "DELETE FROM capture_sessions WHERE tenant_id=? AND catalog_target=?",
+      )
+      .run(ctx.tenantId, target);
+    const token = randomBytes(32).toString("hex");
+    await db
+      .prepare(
+        "INSERT INTO capture_sessions(token_hash,tenant_id,user_id,session_hash,order_id,catalog_target,expires_at,freight_unit) VALUES(?,?,?,?,NULL,?,?,?)",
+      )
+      .run(
+        digest(token),
+        ctx.tenantId,
+        ctx.userId,
+        digest(sessionToken),
+        target,
+        Date.now() + 1800000,
+        freightUnit,
+      );
+    return {
+      token,
+      number: 0,
+      orderId: target,
+      destination: "catalog",
+      label: "Catálogo",
+      plate: "",
+      expires_minutes: 30,
+    };
+  });
+}
+export async function catalogCaptureState(
+  db: DB,
+  ctx: Context,
+  target: string,
+  finish = false,
+) {
+  requireAdmin(ctx);
+  z.string().uuid().parse(target);
+  return transaction(db, async () => {
+    if (finish)
+      await db
+        .prepare(
+          "DELETE FROM capture_sessions WHERE tenant_id=? AND catalog_target=?",
+        )
+        .run(ctx.tenantId, target);
+    const items = await db
+      .prepare(
+        "SELECT c.*,e.id capture_receipt,e.source capture_source,e.duration_seconds,1 quantity FROM external_captures e JOIN catalog c ON c.id=e.catalog_id AND c.tenant_id=e.tenant_id WHERE e.tenant_id=? AND e.catalog_target=? AND c.archived_at IS NULL ORDER BY e.created_at DESC",
+      )
+      .all(ctx.tenantId, target);
+    return { items: [...new Map(items.map((i) => [i.id, i])).values()] };
   });
 }

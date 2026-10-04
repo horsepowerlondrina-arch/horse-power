@@ -1,4 +1,5 @@
-import { ServiceTimes } from "./pages/ServiceTimes";
+import { PeopleRegisters } from "./pages/PeopleRegisters";
+import { PartsProfit } from "./pages/PartsProfit";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Expenses, FinanceNav } from "./pages/Expenses";
@@ -131,7 +132,15 @@ export function App() {
         </button>
       </div>
     );
-  if (!session) return <Login onLogin={async () => { await load(); navigate("/inicio"); }} />;
+  if (!session)
+    return (
+      <Login
+        onLogin={async () => {
+          await load();
+          navigate("/inicio");
+        }}
+      />
+    );
   if (!data) return null;
   const groups: {
     title: string;
@@ -148,11 +157,9 @@ export function App() {
     {
       title: "CADASTROS",
       items: [
-        ["/clientes", "Clientes", Users],
-        ["/veiculos", "Veículos", CarFront],
+        ["/cadastros", "Clientes e veículos", Users],
         ["/catalogo", "Produtos e serviços", Package],
         ["/profissionais", "Profissionais", Wrench],
-        ["/tempos", "Tempos de serviço", Wrench],
       ],
     },
     {
@@ -176,7 +183,11 @@ export function App() {
     groups
       .flatMap((g) => g.items)
       .find(([path]) => location.pathname.startsWith(path))?.[1] ||
-    (location.pathname === "/inicio" ? "Início" : location.pathname === "/configuracoes" ? "Configurações" : "Atendimento");
+    (location.pathname === "/inicio"
+      ? "Início"
+      : location.pathname === "/configuracoes"
+        ? "Configurações"
+        : "Atendimento");
   const active = data.orders.filter((o) =>
     ["open", "working", "ready", "awaiting_payment"].includes(
       o.display_status || o.status,
@@ -239,7 +250,7 @@ export function App() {
             id: c.id,
             label: c.name,
             detail: "Cliente",
-            path: `/clientes?q=${encodeURIComponent(c.name)}`,
+            path: `/cadastros?aba=clientes&q=${encodeURIComponent(c.name)}`,
           })),
         ...data.catalog
           .filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
@@ -269,9 +280,14 @@ export function App() {
               alt="Horse Power Car Service"
             />
           </NavLink>
-          <NavLink to="/inicio" className={({ isActive }) => `home-nav ${isActive ? "active" : ""}`}>
+          <NavLink
+            to="/inicio"
+            className={({ isActive }) => `home-nav ${isActive ? "active" : ""}`}
+          >
             <LayoutGrid size={21} aria-hidden="true" />
-            <span>Início<small>Explore as áreas do sistema</small></span>
+            <span>
+              Início<small>Explore as áreas do sistema</small>
+            </span>
             <ArrowRight size={16} aria-hidden="true" />
           </NavLink>
           <nav>
@@ -371,7 +387,9 @@ export function App() {
             </div>
           </header>
           <main className="page-content">
-            {!admin && location.pathname !== "/inicio" && !/^\/ordens(?:\/[^/]+)?$/.test(location.pathname) ? (
+            {!admin &&
+            location.pathname !== "/inicio" &&
+            !/^\/ordens(?:\/[^/]+)?$/.test(location.pathname) ? (
               <Navigate to="/ordens" replace />
             ) : !admin && location.pathname === "/ordens/nova" ? (
               <Navigate to="/ordens" replace />
@@ -394,11 +412,21 @@ export function App() {
                 <Route path="/orcamentos/novo" element={<OrderEditor />} />
                 <Route
                   path="/clientes"
-                  element={<Registers key={location.key} kind="customers" />}
+                  element={
+                    <Navigate
+                      replace
+                      to={`/cadastros?aba=clientes&${location.search.slice(1)}`}
+                    />
+                  }
                 />
                 <Route
                   path="/veiculos"
-                  element={<Registers kind="vehicles" />}
+                  element={
+                    <Navigate
+                      replace
+                      to={`/cadastros?aba=veiculos&${location.search.slice(1)}`}
+                    />
+                  }
                 />
                 <Route
                   path="/catalogo"
@@ -408,7 +436,12 @@ export function App() {
                   path="/profissionais"
                   element={<Registers kind="professionals" />}
                 />
-                <Route path="/tempos" element={<ServiceTimes />} />
+                <Route path="/cadastros" element={<PeopleRegisters />} />
+                <Route
+                  path="/tempos"
+                  element={<Navigate to="/catalogo" replace />}
+                />
+                <Route path="/financeiro/pecas" element={<PartsProfit />} />
                 <Route path="/estoque" element={<Stock />} />
                 <Route path="/financeiro" element={<Expenses />} />
                 <Route
@@ -422,10 +455,7 @@ export function App() {
                 />
                 <Route path="/financeiro/caixa" element={<Expenses cash />} />
                 <Route path="/configuracoes" element={<SettingsPage />} />
-                <Route
-                  path="/"
-                  element={<Navigate to="/inicio" replace />}
-                />
+                <Route path="/" element={<Navigate to="/inicio" replace />} />
                 <Route
                   path="*"
                   element={

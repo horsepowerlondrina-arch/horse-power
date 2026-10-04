@@ -145,7 +145,7 @@
     toast(
       r.duplicate
         ? "Peça já enviada. Ajuste a quantidade na Horse Power."
-        : `Peça salva no orçamento #${r.number}`,
+        : `Peça salva: ${r.label || `Atendimento #${r.number}`}`,
     );
   }
 

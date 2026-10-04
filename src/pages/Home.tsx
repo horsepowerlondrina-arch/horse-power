@@ -43,22 +43,10 @@ const sections = [
     title: "Cadastros e estoque",
     items: [
       {
-        to: "/tempos",
-        title: "Tempos de serviço",
-        description: "Consulte tempos capturados por serviço e veículo.",
-        Icon: Wrench,
-      },
-      {
-        to: "/clientes",
-        title: "Clientes",
-        description: "Encontre contatos e mantenha os cadastros em dia.",
+        to: "/cadastros",
+        title: "Clientes e veículos",
+        description: "Contatos, placas e histórico em um só lugar.",
         Icon: Users,
-      },
-      {
-        to: "/veiculos",
-        title: "Veículos",
-        description: "Consulte placas e veículos dos seus clientes.",
-        Icon: CarFront,
       },
       {
         to: "/catalogo",

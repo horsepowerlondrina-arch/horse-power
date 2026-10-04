@@ -1,4 +1,4 @@
-HORSE POWER · CONECTOR 1.1
+HORSE POWER · CONECTOR 1.2
 
 1. Extraia este ZIP em uma pasta permanente.
 2. No Chrome, abra chrome://extensions e ative o Modo do desenvolvedor.
@@ -22,7 +22,7 @@ COMO USAR
 - Cada envio é salvo no orçamento e no catálogo da Horse Power. Os tempos do
   Tempario são guardados com marca, modelo e ano disponíveis na captura.
 - Volte ao orçamento e clique em Concluir captura. Confira preços e quantidades.
-- Em Tempos de serviço, consulte as referências que já foram coletadas.
+- Os tempos capturados continuam guardados para reutilização; a aba separada foi removida.
 
 CONEXÃO E ENVIO
 A conexão dura até 30 minutos e deixa de funcionar ao sair da conta, encerrar
@@ -51,3 +51,11 @@ PARA ATUALIZAR
 Substitua os arquivos da pasta instalada pelos deste ZIP, clique em Recarregar
 no cartão do Conector Horse Power em chrome://extensions e recarregue as abas
 Horse Power, Sky Peças e Tempario. Conecte novamente o orçamento.
+
+NOVIDADES 1.2
+- Importe diretamente em Produtos e serviços ou Estoque, sem orçamento.
+- Orçamentos e OS em andamento também recebem itens.
+- No Sky, informe antes da conexão o frete por unidade.
+- Custo + frete seguem as faixas e ganhos mínimos em Configurações > Lucro das peças.
+- Importar não aumenta o estoque físico. Confirme quantidade, custo e venda em Entrada em estoque.
+- Atualize a extensão em chrome://extensions e recarregue as abas do sistema e dos fornecedores.
