@@ -864,12 +864,16 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
         <CapturePanel
           orderId={savedId}
           source={captureSource}
-          onClose={async (items) => {
+          onClose={async (items, committed) => {
             setForm((f) => ({ ...f, items }));
             await refresh();
             setCaptureSource(null);
             navigate(editorLocation.pathname, { replace: true });
-            notify("Captura salva. Confira os itens e os preços do orçamento.");
+            notify(
+              committed
+                ? "Captura concluída. Itens adicionados ao atendimento."
+                : "Captura descartada. Nenhum item em espera foi adicionado.",
+            );
           }}
         />
       )}
