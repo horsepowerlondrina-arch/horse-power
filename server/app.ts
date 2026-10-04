@@ -703,17 +703,6 @@ export function createApp(db: DB) {
             throw new Error(
               "Este item pertence ao catálogo anterior. Importe novamente pela extensão.",
             );
-          if (
-            !old &&
-            (
-              await db
-                .prepare("SELECT catalog_mode FROM tenants WHERE id=?")
-                .get(ctx.tenantId)
-            )?.catalog_mode === "extension"
-          )
-            throw new Error(
-              "Novos produtos e serviços são cadastrados pela extensão, dentro de um orçamento.",
-            );
           if (old?.merged_into)
             throw new Error(
               "Este cadastro foi unificado. Edite o serviço principal.",
