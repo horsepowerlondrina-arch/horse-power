@@ -39,6 +39,7 @@
   flex-wrap: wrap;
   max-width: min(420px, calc(100vw - 56px));
 }
+#hp-sky-freight,
 #hp-sky-plate {
   display: grid;
   gap: 7px;
@@ -46,6 +47,17 @@
   border-top: 1px solid #eee;
   padding-top: 9px;
   line-height: 1.4;
+}
+#hp-sky-freight input {
+  width: 110px;
+  box-sizing: border-box;
+  border: 1px solid #b8c4cf;
+  border-radius: 6px;
+  padding: 6px 7px;
+  font: 12px Arial, sans-serif;
+}
+#hp-sky-freight input:disabled {
+  opacity: 0.6;
 }
 #hp-sky-plate button:disabled {
   opacity: 0.5;
