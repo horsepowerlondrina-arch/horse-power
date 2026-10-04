@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   LayoutDashboard,
   ClipboardList,
+  ClipboardCheck,
   FileText,
   Users,
   CarFront,
@@ -30,6 +31,12 @@ const sections = [
         title: "Orçamentos",
         description: "Prepare propostas e acompanhe as aprovações.",
         Icon: FileText,
+      },
+      {
+        to: "/checklists",
+        title: "Checklists de entrada",
+        description: "Fotos, avarias, acessórios e assinatura vinculados ao veículo.",
+        Icon: ClipboardCheck,
       },
       {
         to: "/dashboard",
