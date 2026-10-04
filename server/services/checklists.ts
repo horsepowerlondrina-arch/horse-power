@@ -2,7 +2,8 @@ import { z } from "zod";
 import type { Context } from "../auth/session.js";
 import { transaction, type DB } from "../db/database.js";
 import { requireAdmin } from "./payments.js";
-import { audit, id, scoped } from "./workshop.js";
+import { normalizePlate } from "./vehicleLookup.js";
+import { audit, id, saveOrder, scoped } from "./workshop.js";
 
 const conditionState = z.enum(["ok", "issue", "unchecked"]);
 const damageSchema = z.object({
@@ -11,9 +12,21 @@ const damageSchema = z.object({
   type: z.enum(["Risco", "Amassado", "Trinca", "Avaria / adicional"]),
   note: z.string().trim().max(200).default(""),
 });
+const vehicleDataSchema = z.object({
+  brand: z.string().trim().min(2, "Informe a marca.").max(150),
+  model: z.string().trim().min(2, "Informe o modelo.").max(150),
+  year: z.number().int().min(1900).max(2100),
+  color: z.string().trim().max(80).default(""),
+  chassis: z.string().trim().max(100).default(""),
+});
 const createSchema = z.object({
   order_id: z.string().trim().min(1).nullable().optional(),
-  vehicle_id: z.string().trim().min(1).nullable().optional(),
+  plate: z.string().trim().max(12),
+  lookup_source: z.string().trim().max(30).default(""),
+  customer_id: z.string().trim().min(1).nullable().optional(),
+  customer_name: z.string().trim().max(150).default(""),
+  phone: z.string().trim().max(80).default(""),
+  vehicle_data: vehicleDataSchema,
   km: z.number().int().min(0).max(2000000).default(0),
   fuel_level: z.number().int().min(0).max(100).default(0),
   inspector: z.string().trim().min(2).max(150),
@@ -60,11 +73,26 @@ function parseJson<T>(value: unknown, fallback: T): T {
     return fallback;
   }
 }
+function vehicleLabel(vehicle: Record<string, any>) {
+  return [vehicle.brand, vehicle.model, vehicle.color, vehicle.year]
+    .filter(Boolean)
+    .join(" ");
+}
+function todaySaoPaulo() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 async function row(db: DB, ctx: Context, checklistId: string) {
   const value = await db
     .prepare(
-      `SELECT k.*,o.number order_number
+      `SELECT k.*,o.number order_number,o.kind order_kind
        FROM checklists k
        LEFT JOIN orders o ON o.id=k.order_id AND o.tenant_id=k.tenant_id
        WHERE k.tenant_id=? AND k.id=?`,
@@ -87,8 +115,8 @@ export async function listChecklists(db: DB, ctx: Context) {
   return db
     .prepare(
       `SELECT k.id,k.order_id,k.customer_id,k.vehicle_id,k.customer_name,k.plate,k.vehicle_label,
-              k.km,k.fuel_level,k.inspector,k.status,k.created_at,k.updated_at,k.completed_at,
-              o.number order_number,
+              k.km,k.fuel_level,k.inspector,k.status,k.lookup_source,k.created_at,k.updated_at,k.completed_at,
+              o.number order_number,o.kind order_kind,
               (SELECT COUNT(*) FROM checklist_photos p
                WHERE p.tenant_id=k.tenant_id AND p.checklist_id=k.id) photo_count
        FROM checklists k
@@ -111,6 +139,7 @@ export async function getChecklist(
     conditions: parseJson<Record<string, string>>(value.conditions_json, {}),
     panel_lights: parseJson<Record<string, boolean>>(value.panel_json, {}),
     damages: parseJson<any[]>(value.damages_json, []),
+    vehicle_data: parseJson<Record<string, any>>(value.vehicle_data_json, {}),
     customer_confirmed: !!value.customer_confirmed,
     photos: await db
       .prepare(
@@ -128,60 +157,91 @@ export async function createChecklist(
   requireAdmin(ctx);
   const v = createSchema.parse(input);
   return transaction(db, async () => {
+    const plate = normalizePlate(v.plate);
+    if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(plate))
+      throw new Error("Informe uma placa brasileira válida.");
+
     let order: Record<string, any> | null = null;
-    let vehicleId = v.vehicle_id || "";
+    let vehicle: Record<string, any> | null = null;
+    let customer: Record<string, any> | null = null;
+
     if (v.order_id) {
       order = await scoped(db, "orders", ctx.tenantId, v.order_id);
-      if (order.kind !== "order")
-        throw new Error("O checklist de entrada deve ser vinculado a uma OS.");
       if (!order.vehicle_id || !order.customer_id)
-        throw new Error("A OS precisa ter cliente e veículo vinculados.");
-      vehicleId = String(order.vehicle_id);
-      if (v.vehicle_id && v.vehicle_id !== vehicleId)
-        throw new Error("O veículo escolhido não corresponde à OS.");
+        throw new Error("O atendimento vinculado precisa ter cliente e veículo.");
+      vehicle = await scoped(
+        db,
+        "vehicles",
+        ctx.tenantId,
+        String(order.vehicle_id),
+      );
+      customer = await scoped(
+        db,
+        "customers",
+        ctx.tenantId,
+        String(order.customer_id),
+      );
+      if (normalizePlate(String(vehicle.plate)) !== plate)
+        throw new Error("A placa informada não corresponde ao atendimento.");
+    } else {
+      vehicle =
+        (await db
+          .prepare(
+            "SELECT * FROM vehicles WHERE tenant_id=? AND plate=?",
+          )
+          .get(ctx.tenantId, plate)) || null;
+      if (vehicle)
+        customer = await scoped(
+          db,
+          "customers",
+          ctx.tenantId,
+          String(vehicle.customer_id),
+        );
+      else if (v.customer_id)
+        customer = await scoped(db, "customers", ctx.tenantId, v.customer_id);
     }
 
-    if (!vehicleId) throw new Error("Selecione um veículo.");
-    const vehicle = await scoped(db, "vehicles", ctx.tenantId, vehicleId);
-    const customer = await scoped(
-      db,
-      "customers",
-      ctx.tenantId,
-      String(vehicle.customer_id),
-    );
-    if (order && String(order.customer_id) !== String(customer.id))
-      throw new Error("O cliente da OS não corresponde ao veículo.");
+    if (customer && !customer.active)
+      throw new Error("O cliente selecionado está inativo.");
+    if (vehicle && !vehicle.active)
+      throw new Error("O veículo encontrado está inativo.");
+    if (!customer && v.customer_name.trim().length < 2)
+      throw new Error("Informe o nome do cliente.");
+
+    const vehicleData = vehicle
+      ? {
+          brand: vehicle.brand,
+          model: vehicle.model,
+          year: Number(vehicle.year),
+          color: vehicle.color || "",
+          chassis: vehicle.chassis || "",
+        }
+      : vehicleDataSchema.parse(v.vehicle_data);
 
     const checklistId = id();
-    const vehicleLabel = [
-      vehicle.brand,
-      vehicle.model,
-      vehicle.color,
-      vehicle.year,
-    ]
-      .filter(Boolean)
-      .join(" ");
     await db
       .prepare(
         `INSERT INTO checklists(
           id,tenant_id,order_id,customer_id,vehicle_id,customer_name,phone,plate,vehicle_label,
-          km,fuel_level,inspector,complaint
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          km,fuel_level,inspector,complaint,lookup_source,vehicle_data_json
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         checklistId,
         ctx.tenantId,
         order?.id || null,
-        customer.id,
-        vehicle.id,
-        customer.name,
-        customer.phone || "",
-        vehicle.plate,
-        vehicleLabel,
-        v.km || Number(order?.km || vehicle.km || 0),
+        customer?.id || null,
+        vehicle?.id || null,
+        customer?.name || v.customer_name,
+        customer?.phone || v.phone || "",
+        plate,
+        vehicleLabel(vehicleData),
+        v.km || Number(order?.km || vehicle?.km || 0),
         v.fuel_level,
         v.inspector,
         order?.problem || "",
+        vehicle ? "local" : v.lookup_source || "manual",
+        JSON.stringify(vehicleData),
       );
     await audit(db, ctx, "checklist.created", checklistId);
     return { id: checklistId };
@@ -248,14 +308,158 @@ export async function finalizeChecklist(
       throw new Error(
         "Registre a assinatura do cliente ou informe o motivo da ausência.",
       );
+
+    let order: Record<string, any> | null = null;
+    let customer: Record<string, any> | null = null;
+    let vehicle: Record<string, any> | null = null;
+
+    if (value.order_id) {
+      order = await scoped(db, "orders", ctx.tenantId, String(value.order_id));
+      if (!order.customer_id || !order.vehicle_id)
+        throw new Error("O atendimento vinculado não possui cliente e veículo.");
+      customer = await scoped(
+        db,
+        "customers",
+        ctx.tenantId,
+        String(order.customer_id),
+      );
+      vehicle = await scoped(
+        db,
+        "vehicles",
+        ctx.tenantId,
+        String(order.vehicle_id),
+      );
+    } else {
+      vehicle =
+        (await db
+          .prepare("SELECT * FROM vehicles WHERE tenant_id=? AND plate=?")
+          .get(ctx.tenantId, normalizePlate(String(value.plate)))) || null;
+
+      if (vehicle) {
+        customer = await scoped(
+          db,
+          "customers",
+          ctx.tenantId,
+          String(vehicle.customer_id),
+        );
+      } else {
+        if (value.customer_id) {
+          customer = await scoped(
+            db,
+            "customers",
+            ctx.tenantId,
+            String(value.customer_id),
+          );
+          if (!customer.active)
+            throw new Error("O cliente selecionado está inativo.");
+        } else {
+          const customerName = String(value.customer_name || "").trim();
+          if (customerName.length < 2)
+            throw new Error("Informe o nome do cliente antes de finalizar.");
+          const customerId = id();
+          await db
+            .prepare(
+              `INSERT INTO customers(
+                id,tenant_id,name,phone,email,document,birthday,address,notes,active
+              ) VALUES(?,?,?,?,?,?,?,?,?,1)`,
+            )
+            .run(
+              customerId,
+              ctx.tenantId,
+              customerName,
+              String(value.phone || ""),
+              "",
+              "",
+              "",
+              "",
+              "Cadastro criado automaticamente pelo checklist de entrada.",
+            );
+          await audit(db, ctx, "customers.created_from_checklist", customerId);
+          customer = await scoped(db, "customers", ctx.tenantId, customerId);
+        }
+
+        const vehicleData = vehicleDataSchema.parse(
+          parseJson(value.vehicle_data_json, {}),
+        );
+        const vehicleId = id();
+        await db
+          .prepare(
+            `INSERT INTO vehicles(
+              id,tenant_id,customer_id,plate,brand,model,year,color,km,chassis,active
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,1)`,
+          )
+          .run(
+            vehicleId,
+            ctx.tenantId,
+            customer.id,
+            normalizePlate(String(value.plate)),
+            vehicleData.brand,
+            vehicleData.model,
+            vehicleData.year,
+            vehicleData.color,
+            Number(value.km || 0),
+            vehicleData.chassis,
+          );
+        await audit(db, ctx, "vehicles.created_from_checklist", vehicleId);
+        vehicle = await scoped(db, "vehicles", ctx.tenantId, vehicleId);
+      }
+    }
+
+    await db
+      .prepare("UPDATE vehicles SET km=? WHERE tenant_id=? AND id=?")
+      .run(Number(value.km || 0), ctx.tenantId, vehicle.id);
+
+    let createdQuote = false;
+    let orderId = order?.id || "";
+    if (!order) {
+      const day = todaySaoPaulo();
+      orderId = await saveOrder(db, ctx, {
+        customer_id: customer.id,
+        vehicle_id: vehicle.id,
+        guest_name: "",
+        guest_plate: "",
+        guest_vehicle: "",
+        status: "quote",
+        entered_on: day,
+        due_on: day,
+        km: Number(value.km || 0),
+        problem: String(value.complaint || ""),
+        notes: "Orçamento aberto automaticamente após o checklist de entrada.",
+        discount: 0,
+        items: [],
+      });
+      order = await scoped(db, "orders", ctx.tenantId, orderId);
+      createdQuote = true;
+    }
+
     const now = new Date().toISOString();
     await db
       .prepare(
-        "UPDATE checklists SET status='completed',completed_at=?,updated_at=? WHERE tenant_id=? AND id=?",
+        `UPDATE checklists SET
+          order_id=?,customer_id=?,vehicle_id=?,customer_name=?,phone=?,plate=?,vehicle_label=?,
+          status='completed',completed_at=?,updated_at=?
+         WHERE tenant_id=? AND id=?`,
       )
-      .run(now, now, ctx.tenantId, checklistId);
+      .run(
+        orderId,
+        customer.id,
+        vehicle.id,
+        customer.name,
+        customer.phone || "",
+        vehicle.plate,
+        vehicleLabel(vehicle),
+        now,
+        now,
+        ctx.tenantId,
+        checklistId,
+      );
     await audit(db, ctx, "checklist.completed", checklistId);
-    return getChecklist(db, ctx, checklistId);
+
+    return {
+      ...(await getChecklist(db, ctx, checklistId)),
+      created_quote: createdQuote,
+      redirect_order_id: orderId,
+    };
   });
 }
 
