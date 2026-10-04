@@ -274,6 +274,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
         order={{
           ...(order || {}),
           ...form,
+          id: order?.id || "print-preview",
           number: order?.number || "—",
           kind: form.status === "quote" ? "quote" : "order",
           customer_name: customer?.name || form.guest_name,
