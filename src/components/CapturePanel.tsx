@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, send } from "../lib/api";
 import { extensionMessage } from "../lib/extension";
 import { Modal } from "./ui";
@@ -15,6 +15,8 @@ export function CapturePanel({
   onClose: (items: Entity[]) => Promise<void>;
 }) {
   const [catalogId] = useState(() => crypto.randomUUID());
+  const [batchId] = useState(() => crypto.randomUUID());
+  const freightEditing = useRef(false);
   const targetId = catalog ? catalogId : orderId!;
   const stateUrl = catalog
     ? `/catalog-capture/${targetId}`
@@ -25,7 +27,8 @@ export function CapturePanel({
   const [items, setItems] = useState<Entity[]>([]),
     [number, setNumber] = useState<number>();
   const [expires, setExpires] = useState(0);
-  const [freight, setFreight] = useState(0);
+  const [freight, setFreight] = useState(1750);
+  const [freightBusy, setFreightBusy] = useState(false);
   const [plate, setPlate] = useState("");
   const [plateAutofill, setPlateAutofill] = useState(false);
   useEffect(() => {
@@ -33,7 +36,15 @@ export function CapturePanel({
     async function load() {
       try {
         const r = await api(stateUrl);
-        if (current) setItems(r.items);
+        if (current) {
+          setItems(r.items);
+          if (
+            source === "sky" &&
+            !freightEditing.current &&
+            Number.isInteger(r.freight_total)
+          )
+            setFreight(r.freight_total);
+        }
       } catch (e) {
         if (current) setError((e as Error).message);
       }
@@ -58,13 +69,18 @@ export function CapturePanel({
         catalog
           ? `/catalog-capture/${targetId}/start`
           : `/orders/${targetId}/capture-session`,
-        { freight_unit: source === "sky" ? freight : 0 },
+        {
+          freight_total: source === "sky" ? freight : 0,
+          batch_id: batchId,
+        },
       );
       await extensionMessage("HP_CONNECT", {
         target: { ...target, orderId: targetId },
       });
       setNumber(target.number);
       setPlate(target.plate);
+      if (source === "sky" && Number.isInteger(target.freight_total))
+        setFreight(target.freight_total);
       setPlateAutofill(extension.plateAutofill === true);
       setExpires(Date.now() + target.expires_minutes * 60000);
       setConnected(true);
@@ -72,6 +88,24 @@ export function CapturePanel({
       setError((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+  async function saveFreight() {
+    if (!connected || source !== "sky" || freightBusy) return;
+    setFreightBusy(true);
+    setError("");
+    try {
+      const result = await extensionMessage("HP_SET_FREIGHT", {
+        freight_total: freight,
+      });
+      if (Number.isInteger(result.freight_total))
+        setFreight(result.freight_total);
+      const state = await api(stateUrl);
+      setItems(state.items);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setFreightBusy(false);
     }
   }
   async function close() {
@@ -128,20 +162,31 @@ export function CapturePanel({
         )}
         {source === "sky" && (
           <label className="field">
-            Frete por unidade (R$)
+            Frete total da compra (R$)
             <input
               type="number"
               min="0"
               step="0.01"
-              disabled={connected}
+              disabled={freightBusy}
               value={freight / 100}
+              onFocus={() => {
+                freightEditing.current = true;
+              }}
               onChange={(e) =>
                 setFreight(Math.round(Number(e.target.value) * 100))
               }
+              onBlur={() => {
+                freightEditing.current = false;
+                void saveFreight();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
             />
             <small>
-              Aplicado a cada peça desta captura. Para outro frete, conclua e
-              abra uma nova captura.
+              Frete total da compra. O padrão é R$ 17,50. Você pode alterar a
+              qualquer momento; o valor é redistribuído proporcionalmente entre
+              as peças desta mesma captura, inclusive as já enviadas.
             </small>
           </label>
         )}
