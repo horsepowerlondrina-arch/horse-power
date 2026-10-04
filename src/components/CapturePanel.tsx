@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, send } from "../lib/api";
 import { extensionMessage } from "../lib/extension";
 import { Modal } from "./ui";
+import { Trash2 } from "lucide-react";
 import { money, type Entity } from "../lib/types";
 export function CapturePanel({
   orderId,
@@ -12,11 +13,12 @@ export function CapturePanel({
   orderId?: string;
   catalog?: boolean;
   source: "sky" | "tempario";
-  onClose: (items: Entity[]) => Promise<void>;
+  onClose: (items: Entity[], committed: boolean) => Promise<void>;
 }) {
   const [catalogId] = useState(() => crypto.randomUUID());
   const [batchId] = useState(() => crypto.randomUUID());
   const freightEditing = useRef(false);
+  const editingCapture = useRef<string | null>(null);
   const targetId = catalog ? catalogId : orderId!;
   const stateUrl = catalog
     ? `/catalog-capture/${targetId}`
@@ -24,8 +26,9 @@ export function CapturePanel({
   const [connected, setConnected] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [items, setItems] = useState<Entity[]>([]),
-    [number, setNumber] = useState<number>();
+  const [items, setItems] = useState<Entity[]>([]);
+  const [stagedItems, setStagedItems] = useState<Entity[]>([]);
+  const [number, setNumber] = useState<number>();
   const [expires, setExpires] = useState(0);
   const [freight, setFreight] = useState(1750);
   const [freightBusy, setFreightBusy] = useState(false);
@@ -38,6 +41,8 @@ export function CapturePanel({
         const r = await api(stateUrl);
         if (current) {
           setItems(r.items);
+          if (!editingCapture.current)
+            setStagedItems(r.staged_items || []);
           if (
             source === "sky" &&
             !freightEditing.current &&
@@ -102,13 +107,41 @@ export function CapturePanel({
         setFreight(result.freight_total);
       const state = await api(stateUrl);
       setItems(state.items);
+      setStagedItems(state.staged_items || []);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setFreightBusy(false);
     }
   }
-  async function close() {
+  async function disconnect() {
+    try {
+      await extensionMessage("HP_DISCONNECT", { orderId: targetId });
+    } catch {
+      /* The server may already have revoked the scoped connection. */
+    }
+  }
+  async function updateCapturedItem(item: Entity, patch: Record<string, any>) {
+    if (catalog || busy) return;
+    setError("");
+    try {
+      const state = await send(
+        `/orders/${targetId}/capture-items/${item.capture_receipt || item.id}`,
+        patch,
+        "PATCH",
+      );
+      setItems(state.items);
+      setStagedItems(state.staged_items || []);
+    } catch (e) {
+      setError((e as Error).message);
+      const state = await api(stateUrl);
+      setItems(state.items);
+      setStagedItems(state.staged_items || []);
+    } finally {
+      editingCapture.current = null;
+    }
+  }
+  async function complete() {
     if (busy) return;
     setBusy(true);
     setError("");
@@ -119,17 +152,32 @@ export function CapturePanel({
           : `/orders/${targetId}/end-capture`,
         {},
       );
-      try {
-        await extensionMessage("HP_DISCONNECT", { orderId: targetId });
-      } catch {
-        /* Server already revoked the scoped connection. */
-      }
-      await onClose(state.items);
+      await disconnect();
+      await onClose(state.items, true);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
     }
   }
+  async function discard() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const state = await send(
+        catalog
+          ? `/catalog-capture/${targetId}/end`
+          : `/orders/${targetId}/discard-capture`,
+        {},
+      );
+      await disconnect();
+      await onClose(state.items, false);
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+
   return (
     <Modal
       title={
@@ -140,9 +188,9 @@ export function CapturePanel({
       description={
         catalog
           ? "Envie itens ao catálogo sem precisar abrir um orçamento. Depois, confirme as entradas físicas no estoque."
-          : "Os itens são salvos neste atendimento e no catálogo da oficina."
+          : "Os itens capturados ficam em espera. Ajuste quantidade ou tempo e só envie ao atendimento ao clicar em Concluir captura."
       }
-      onClose={() => void close()}
+      onClose={() => void discard()}
     >
       <div className="modal-body capture-panel">
         <p>
@@ -157,7 +205,7 @@ export function CapturePanel({
               hour: "2-digit",
               minute: "2-digit",
             })}
-            . Ao terminar, clique em Concluir captura.
+            . Ao terminar, revise os itens e clique em Concluir captura. Fechar no X descarta os itens ainda em espera.
           </p>
         )}
         {source === "sky" && (
@@ -262,13 +310,13 @@ export function CapturePanel({
           </p>
         )}
         <h3>
-          {catalog ? "Itens recebidos" : "Itens do atendimento"} ·{" "}
-          {items.length}
+          {catalog ? "Itens recebidos" : "Itens desta captura"} ·{" "}
+          {(catalog ? items : stagedItems).length}
         </h3>
         <div className="capture-list">
-          {items.map((i) => (
-            <div key={i.id}>
-              <span>
+          {(catalog ? items : stagedItems).map((i) => (
+            <div key={i.id} className="capture-list-row">
+              <span className="capture-item-main">
                 <strong>{i.name}</strong>
                 <small>
                   {i.capture_source === "sky"
@@ -276,13 +324,82 @@ export function CapturePanel({
                     : i.capture_source === "tempario"
                       ? "Tempario"
                       : "Catálogo"}
-                  {i.duration_seconds
-                    ? ` · ${Math.round(i.duration_seconds / 60)} min`
-                    : ""}
                 </small>
               </span>
-              <span>
-                <b>{money(i.price * i.quantity)}</b>
+              {!catalog && i.capture_source === "sky" ? (
+                <label className="capture-inline-field">
+                  <span>Qtd.</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    value={i.quantity}
+                    onFocus={() => {
+                      editingCapture.current = i.id;
+                    }}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      setStagedItems((current) =>
+                        current.map((row) =>
+                          row.id === i.id ? { ...row, quantity: value } : row,
+                        ),
+                      );
+                    }}
+                    onBlur={() =>
+                      void updateCapturedItem(i, {
+                        quantity: Number(
+                          stagedItems.find((row) => row.id === i.id)?.quantity ??
+                            i.quantity,
+                        ),
+                      })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                    }}
+                  />
+                </label>
+              ) : !catalog && i.capture_source === "tempario" ? (
+                <label className="capture-inline-field">
+                  <span>Tempo (min)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60000"
+                    step="1"
+                    value={Math.round(Number(i.duration_seconds || 60) / 60)}
+                    onFocus={() => {
+                      editingCapture.current = i.id;
+                    }}
+                    onChange={(e) => {
+                      const seconds = Math.max(
+                        60,
+                        Math.round(Number(e.target.value || 1) * 60),
+                      );
+                      setStagedItems((current) =>
+                        current.map((row) =>
+                          row.id === i.id
+                            ? { ...row, duration_seconds: seconds }
+                            : row,
+                        ),
+                      );
+                    }}
+                    onBlur={() =>
+                      void updateCapturedItem(i, {
+                        duration_seconds: Number(
+                          stagedItems.find((row) => row.id === i.id)
+                            ?.duration_seconds ?? i.duration_seconds,
+                        ),
+                      })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                    }}
+                  />
+                </label>
+              ) : null}
+              <span className="capture-item-value">
+                <b>{money(i.price * (i.quantity || 1))}</b>
                 {i.kind === "product" && (
                   <small>
                     Custo: {money(i.cost)} · Lucro/un.:{" "}
@@ -290,6 +407,16 @@ export function CapturePanel({
                   </small>
                 )}
               </span>
+              {!catalog && (
+                <button
+                  type="button"
+                  className="icon-button danger"
+                  aria-label={`Excluir ${i.name} da captura`}
+                  onClick={() => void updateCapturedItem(i, { remove: true })}
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -304,7 +431,7 @@ export function CapturePanel({
           type="button"
           className="button primary"
           disabled={busy}
-          onClick={() => void close()}
+          onClick={() => void complete()}
         >
           {busy ? "Aguarde…" : "Concluir captura"}
         </button>
