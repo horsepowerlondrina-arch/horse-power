@@ -312,7 +312,7 @@ export async function updateStagedCaptureItem(
         "SELECT * FROM external_captures WHERE tenant_id=? AND order_id=? AND id=? AND batch_id=? AND item_id IS NULL",
       )
       .get(ctx.tenantId, orderId, captureId, session.batch_id);
-    if (!capture) throw new Error("Este item não está mais na captura.");
+    if (!capture) return captureState(db, ctx, orderId);
 
     if (v.remove || (capture.source === "sky" && v.quantity === 0)) {
       if (capture.source === "tempario")
