@@ -17,6 +17,16 @@ import {
 import { assertUniqueService } from "./services/serviceCatalog.js";
 import { generateExpenses, payExpense } from "./services/expenses.js";
 import { createShare, readShare } from "./services/sharing.js";
+import {
+  addChecklistPhoto,
+  createChecklist,
+  finalizeChecklist,
+  getChecklist,
+  getChecklistPhoto,
+  listChecklists,
+  removeChecklistPhoto,
+  updateChecklist,
+} from "./services/checklists.js";
 import express from "express";
 import { z } from "zod";
 import { resolve } from "node:path";
@@ -405,6 +415,79 @@ export function createApp(db: DB) {
         .all(tenant),
     });
   });
+  app.get("/api/checklists", async (_req, res) => {
+    res.json(await listChecklists(db, res.locals.context));
+  });
+  app.post("/api/checklists", async (req, res) => {
+    res.status(201).json(
+      await createChecklist(db, res.locals.context, req.body),
+    );
+  });
+  app.get("/api/checklists/:id", async (req, res) => {
+    res.json(
+      await getChecklist(
+        db,
+        res.locals.context,
+        String(req.params.id),
+      ),
+    );
+  });
+  app.put("/api/checklists/:id", async (req, res) => {
+    res.json(
+      await updateChecklist(
+        db,
+        res.locals.context,
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  });
+  app.post("/api/checklists/:id/finalize", async (req, res) => {
+    res.json(
+      await finalizeChecklist(
+        db,
+        res.locals.context,
+        String(req.params.id),
+      ),
+    );
+  });
+  app.post(
+    "/api/checklists/:id/photos",
+    express.raw({ type: ["image/jpeg", "image/png"], limit: "2mb" }),
+    async (req, res) => {
+      res.status(201).json(
+        await addChecklistPhoto(
+          db,
+          res.locals.context,
+          String(req.params.id),
+          req.query.kind,
+          req.headers["content-type"]?.split(";")[0],
+          req.body,
+        ),
+      );
+    },
+  );
+  app.delete("/api/checklists/:id/photos/:photoId", async (req, res) => {
+    res.json(
+      await removeChecklistPhoto(
+        db,
+        res.locals.context,
+        String(req.params.id),
+        String(req.params.photoId),
+      ),
+    );
+  });
+  app.get("/api/checklist-photos/:photoId", async (req, res) => {
+    const photo = await getChecklistPhoto(
+      db,
+      res.locals.context,
+      String(req.params.photoId),
+    );
+    res.set("Content-Type", String(photo.mime));
+    res.set("Cache-Control", "private, max-age=300");
+    res.send(Buffer.from(String(photo.image_data), "base64"));
+  });
+
   app.get("/api/expenses", async (_req, res) => {
     const t = res.locals.context.tenantId;
     res.json({
