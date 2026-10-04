@@ -216,6 +216,7 @@ test("staged Tempario services edit time instead of quantity and recalculate the
 
     const completed = await finishCapture(db, ctx, "o");
     const saved = completed.items.find((i: any) => i.kind === "service");
+    assert.ok(saved);
     assert.equal(saved.duration_seconds, 1800);
     assert.equal(saved.price, 14814);
     const time = db.prepare("SELECT * FROM service_times").get();
