@@ -48,3 +48,10 @@ Os testes de placa cobrem vínculo ao veículo cadastrado, placa avulsa, normali
 Os testes automatizados do worker verificam que Sky Peças, Tempario e popup recebem somente o contexto seguro da placa, sem token ou origem interna. O comportamento visual dos adaptadores preserva edição manual e oferece reaplicação pelo botão. A confirmação final dos seletores do Sky Peças ainda depende do navegador autenticado, porque o fornecedor pode alterar o HTML da consulta.
 
 A instalação no Chrome e a captura visual nas versões atuais de Sky Peças e Tempario precisam ser confirmadas no navegador onde o usuário acessa os fornecedores.
+
+
+### Frete do Sky Peças · versão 1.3.2
+
+Cada captura do Sky representa uma compra. O frete padrão é R$ 17,50 por compra, não por unidade. O valor pode ser alterado enquanto a captura estiver ativa, tanto na Horse Power quanto no painel flutuante do Sky.
+
+O servidor distribui o frete total proporcionalmente ao custo total dos itens enviados na mesma captura (custo unitário × quantidade). Ao adicionar uma nova peça ou alterar o frete, os custos e os preços sugeridos das peças já enviadas nessa mesma captura são recalculados. Ao concluir a captura e abrir outra, começa uma nova compra com o padrão de R$ 17,50.
