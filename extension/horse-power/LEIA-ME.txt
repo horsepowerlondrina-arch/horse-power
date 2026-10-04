@@ -1,4 +1,4 @@
-HORSE POWER · CONECTOR 1.1
+HORSE POWER · CONECTOR 1.2
 
 1. Extraia este ZIP em uma pasta permanente.
 2. No Chrome, abra chrome://extensions e ative o Modo do desenvolvedor.
@@ -12,17 +12,19 @@ COMO USAR
 - Clique em Adicionar produto · Sky Peças ou Adicionar serviço · Tempario.
   O orçamento e as alterações atuais serão salvos antes de conectar.
 - Clique em Conectar extensão. A conexão identifica o orçamento de destino.
-- No Tempario, a placa do orçamento será preenchida automaticamente ao abrir
-  a consulta, mesmo depois do login ou se o site já estava aberto. Clique em
-  Buscar no Tempario para consultar. Não há consulta automática cobrada.
+- No Sky Peças e no Tempario, a placa do orçamento é preenchida automaticamente
+  quando a consulta por placa estiver aberta. O conector não dispara a consulta:
+  confira a placa e use o botão de busca do próprio fornecedor.
 - Você também pode abrir o ícone da extensão > Abrir Tempario com a placa.
-- Se editar a placa manualmente no Tempario, o conector preserva sua edição.
-  Use Preencher placa para reaplicar a placa do orçamento.
+- Se editar a placa manualmente no Sky Peças ou Tempario, o conector preserva
+  sua edição. Use Preencher placa para reaplicar a placa do orçamento.
 - Abra o fornecedor, entre na sua conta e clique em HP • Enviar em cada item.
 - Cada envio é salvo no orçamento e no catálogo da Horse Power. Os tempos do
   Tempario são guardados com marca, modelo e ano disponíveis na captura.
 - Volte ao orçamento e clique em Concluir captura. Confira preços e quantidades.
 - Em Tempos de serviço, consulte as referências que já foram coletadas.
+- Produtos e serviços também podem ser cadastrados manualmente na Horse Power,
+  tanto em Cadastros > Produtos e serviços quanto dentro do atendimento.
 
 CONEXÃO E ENVIO
 A conexão dura até 30 minutos e deixa de funcionar ao sair da conta, encerrar
