@@ -295,7 +295,7 @@ export async function finalizeChecklist(
   db: DB,
   ctx: Context,
   checklistId: string,
-) {
+): Promise<Record<string, any>> {
   requireAdmin(ctx);
   return transaction(db, async () => {
     const value = await draft(db, ctx, checklistId);
