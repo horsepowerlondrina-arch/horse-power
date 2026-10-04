@@ -8,9 +8,11 @@ import {
   beginCatalogCapture,
   catalogCaptureState,
   captureState,
+  discardCapture,
   finishCapture,
   importCapture,
   updateCaptureFreight,
+  updateStagedCaptureItem,
 } from "./services/extension.js";
 import { assertUniqueService } from "./services/serviceCatalog.js";
 import { generateExpenses, payExpense } from "./services/expenses.js";
@@ -535,6 +537,22 @@ export function createApp(db: DB) {
   });
   app.get("/api/orders/:id/capture-state", async (req, res) => {
     res.json(await captureState(db, res.locals.context, String(req.params.id)));
+  });
+  app.patch("/api/orders/:id/capture-items/:captureId", async (req, res) => {
+    res.json(
+      await updateStagedCaptureItem(
+        db,
+        res.locals.context,
+        String(req.params.id),
+        String(req.params.captureId),
+        req.body,
+      ),
+    );
+  });
+  app.post("/api/orders/:id/discard-capture", async (req, res) => {
+    res.json(
+      await discardCapture(db, res.locals.context, String(req.params.id)),
+    );
   });
   app.post("/api/orders/:id/end-capture", async (req, res) => {
     res.json(
