@@ -1,4 +1,4 @@
-HORSE POWER · CONECTOR 1.3
+HORSE POWER · CONECTOR 1.3.1
 
 1. Extraia este ZIP em uma pasta permanente.
 2. No Chrome, abra chrome://extensions e ative o Modo do desenvolvedor.
