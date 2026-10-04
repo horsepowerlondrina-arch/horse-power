@@ -8,6 +8,7 @@ import {
   finishCapture,
 } from "../server/services/extension.js";
 import { createApp } from "../server/app.js";
+import { enableExtensionCatalog } from "../server/services/catalogReset.js";
 const db = createPostgresDatabase();
 const tenant = "ext-test-" + randomUUID(),
   user = randomUUID(),
@@ -70,6 +71,7 @@ try {
   assert.equal(state.total, 42345);
   // Verify published authenticated endpoints using only an isolated test tenant.
   if (process.env.VERIFY_ORIGIN) {
+    assert.equal((await enableExtensionCatalog(db, ctx)).archived, 2);
     await db
       .prepare("UPDATE orders SET guest_plate=? WHERE id=? AND tenant_id=?")
       .run("abc-1d23", order, tenant);
@@ -79,6 +81,26 @@ try {
         "Content-Type": "application/json",
         Origin: base,
       };
+    const workspace = await fetch(base + "/api/workspace", { headers });
+    assert.equal(workspace.status, 200);
+    const emptyCatalog = await workspace.json();
+    assert.equal(emptyCatalog.catalog_mode, "extension");
+    assert.equal(emptyCatalog.catalog.length, 0);
+    assert.equal(emptyCatalog.orders[0].items.length, 2);
+    const manual = await fetch(base + "/api/catalog", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        kind: "service",
+        name: "Cadastro manual bloqueado",
+        sku: "MANUAL",
+        cost: 0,
+        price: 100,
+        stock: 0,
+        minimum_stock: 0,
+      }),
+    });
+    assert.equal(manual.status, 400);
     const start = await fetch(
       base + "/api/orders/" + order + "/capture-session",
       { method: "POST", headers, body: "{}" },
@@ -102,7 +124,12 @@ try {
     assert.equal(r.status, 200, await r.text());
     const times = await fetch(base + "/api/service-times", { headers });
     assert.equal(times.status, 200);
-    assert.equal((await times.json()).length, 2);
+    assert.equal((await times.json()).length, 1);
+    const refreshed = await (
+      await fetch(base + "/api/workspace", { headers })
+    ).json();
+    assert.equal(refreshed.catalog.length, 1);
+    assert.equal(refreshed.orders[0].items.length, 3);
     const end = await fetch(base + "/api/orders/" + order + "/end-capture", {
       method: "POST",
       headers,

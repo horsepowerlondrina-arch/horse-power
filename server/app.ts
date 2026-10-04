@@ -324,6 +324,12 @@ export function createApp(db: DB) {
       return;
     }
     res.json({
+      catalog_mode:
+        (
+          await db
+            .prepare("SELECT catalog_mode FROM tenants WHERE id=?")
+            .get(tenant)
+        )?.catalog_mode || "standard",
       installments: await db
         .prepare(
           "SELECT * FROM payment_installments WHERE tenant_id=? ORDER BY sequence",
@@ -347,7 +353,7 @@ export function createApp(db: DB) {
         .all(tenant),
       catalog: await db
         .prepare(
-          "SELECT c.*,(SELECT group_concat(a.alias,' ') FROM service_aliases a WHERE a.tenant_id=c.tenant_id AND a.catalog_id=c.id) search_aliases FROM catalog c WHERE c.tenant_id=? AND c.merged_into IS NULL ORDER BY c.name",
+          "SELECT c.*,(SELECT group_concat(a.alias,' ') FROM service_aliases a WHERE a.tenant_id=c.tenant_id AND a.catalog_id=c.id) search_aliases FROM catalog c WHERE c.tenant_id=? AND c.merged_into IS NULL AND c.archived_at IS NULL ORDER BY c.name",
         )
         .all(tenant),
       professionals: await db
@@ -521,7 +527,7 @@ export function createApp(db: DB) {
     res.json(
       await db
         .prepare(
-          "SELECT t.*,c.name catalog_name FROM service_times t JOIN catalog c ON c.id=t.catalog_id AND c.tenant_id=t.tenant_id WHERE t.tenant_id=? ORDER BY t.captured_at DESC LIMIT 2000",
+          "SELECT t.*,c.name catalog_name FROM service_times t JOIN catalog c ON c.id=t.catalog_id AND c.tenant_id=t.tenant_id WHERE t.tenant_id=? AND c.archived_at IS NULL ORDER BY t.captured_at DESC LIMIT 2000",
         )
         .all(res.locals.context.tenantId),
     );
@@ -693,6 +699,21 @@ export function createApp(db: DB) {
             );
         }
         if (table === "catalog") {
+          if (old?.archived_at)
+            throw new Error(
+              "Este item pertence ao catálogo anterior. Importe novamente pela extensão.",
+            );
+          if (
+            !old &&
+            (
+              await db
+                .prepare("SELECT catalog_mode FROM tenants WHERE id=?")
+                .get(ctx.tenantId)
+            )?.catalog_mode === "extension"
+          )
+            throw new Error(
+              "Novos produtos e serviços são cadastrados pela extensão, dentro de um orçamento.",
+            );
           if (old?.merged_into)
             throw new Error(
               "Este cadastro foi unificado. Edite o serviço principal.",

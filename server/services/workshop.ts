@@ -103,7 +103,13 @@ export async function saveOrder(
           ctx.tenantId,
           item.catalog_id,
         );
-        if (!catalog.active) throw new Error("Um dos itens está inativo.");
+        const prior = previous.find(
+          (p) => p.id === item.id && p.catalog_id === item.catalog_id,
+        );
+        if (catalog.archived_at ? !prior : !catalog.active)
+          throw new Error(
+            "Este item não está disponível no catálogo. Importe pela extensão ou escolha um item ativo.",
+          );
         if (
           item.professional_id &&
           !(
@@ -116,9 +122,6 @@ export async function saveOrder(
           ).active
         )
           throw new Error("Profissional inativo.");
-        const prior = previous.find(
-          (p) => p.id === item.id && p.catalog_id === item.catalog_id,
-        );
         return {
           ...item,
           snapshotId: prior?.id || id(),

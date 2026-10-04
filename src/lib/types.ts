@@ -20,6 +20,7 @@ export type Order = Entity & {
   items: Entity[];
 };
 export interface Workspace {
+  catalog_mode?: "standard" | "extension";
   customers: Entity[];
   vehicles: Entity[];
   catalog: Entity[];

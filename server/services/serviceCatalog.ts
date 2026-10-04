@@ -20,7 +20,7 @@ export async function assertUniqueService(
   const key = serviceNameKey(name);
   const alias = await db
     .prepare(
-      "SELECT c.id,c.name FROM service_aliases a JOIN catalog c ON c.id=a.catalog_id AND c.tenant_id=a.tenant_id WHERE a.tenant_id=? AND a.alias_key=? AND c.id<>?",
+      "SELECT c.id,c.name FROM service_aliases a JOIN catalog c ON c.id=a.catalog_id AND c.tenant_id=a.tenant_id WHERE a.tenant_id=? AND a.alias_key=? AND c.id<>? AND c.archived_at IS NULL",
     )
     .get(tenant, key, record || "");
   const existing =
@@ -28,7 +28,7 @@ export async function assertUniqueService(
     (
       await db
         .prepare(
-          "SELECT id,name FROM catalog WHERE tenant_id=? AND kind='service' AND merged_into IS NULL AND id<>?",
+          "SELECT id,name FROM catalog WHERE tenant_id=? AND kind='service' AND merged_into IS NULL AND id<>? AND archived_at IS NULL",
         )
         .all(tenant, record || "")
     ).find((c) => serviceNameKey(String(c.name)) === key);

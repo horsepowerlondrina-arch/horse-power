@@ -20,6 +20,14 @@ Há atualização de contexto ao retornar à aba e a cada 2,5 segundos. Cada cam
 
 ## Dados
 
+### Catálogo iniciado pela extensão
+
+Cada oficina pode usar `tenants.catalog_mode='extension'`. Nesse modo, novos produtos e serviços entram apenas pelo conector: o cadastro manual é bloqueado no servidor e os botões de criação levam aos orçamentos. Itens já importados podem ser reutilizados, ter seus preços ajustados e receber movimentações de estoque normalmente.
+
+`catalog.archived_at` separa o catálogo anterior do catálogo atual. A limpeza mantém os IDs históricos e os snapshots de nomes, quantidades, custos e preços das OS; não altera clientes, veículos, financeiro ou estoque histórico. Itens arquivados não aparecem nas buscas, nem no filtro Todos, e não podem ser reativados pelo cadastro. Uma OS antiga pode preservar/editar seus próprios itens, mas eles não podem ser adicionados a outro documento. Capturas novas não reutilizam os cadastros arquivados. Os tempos associados ao catálogo anterior também ficam fora da lista atual.
+
+`scripts/reset-catalog.ts` é uma operação de manutenção sem endpoint público: exige oficina e e-mail do administrador, simula por padrão e só aplica com `--apply`. Antes de aplicar, grava backup privado em `data/backups` (fora do Git e da publicação). Dentro de uma transação, arquiva o catálogo, limpa aliases e vínculos de busca antigos, revoga conexões de captura e ativa o modo de extensão. Compara contagens e hashes dos dados operacionais antes/depois, revertendo se houver alteração. Execuções posteriores preservam os novos itens importados. A extensão deve ser reconectada após essa operação.
+
 - `capture_sessions`: tokens com hash e escopo de escrita limitado.
 - `external_catalog_links`: vínculo de código/marca Sky ou nome normalizado Tempario ao catálogo da oficina.
 - `external_captures`: recibos de importação, idempotência e referência do item; preservados quando o editor recria os snapshots do orçamento.

@@ -181,10 +181,11 @@ export async function importCapture(db: DB, token: string, input: unknown) {
       : undefined;
     if (catalog?.merged_into)
       catalog = await scoped(db, "catalog", ctx.tenantId, catalog.merged_into);
+    if (catalog?.archived_at) catalog = undefined;
     if (!catalog && v.source === "tempario") {
       const alias = await db
         .prepare(
-          "SELECT catalog_id FROM service_aliases WHERE tenant_id=? AND alias_key=?",
+          "SELECT a.catalog_id FROM service_aliases a JOIN catalog c ON c.id=a.catalog_id AND c.tenant_id=a.tenant_id WHERE a.tenant_id=? AND a.alias_key=? AND c.archived_at IS NULL",
         )
         .get(ctx.tenantId, key);
       catalog = alias
@@ -192,7 +193,7 @@ export async function importCapture(db: DB, token: string, input: unknown) {
         : (
             await db
               .prepare(
-                "SELECT * FROM catalog WHERE tenant_id=? AND kind='service' AND merged_into IS NULL",
+                "SELECT * FROM catalog WHERE tenant_id=? AND kind='service' AND merged_into IS NULL AND archived_at IS NULL",
               )
               .all(ctx.tenantId)
           ).find((c) => serviceNameKey(c.name) === key);

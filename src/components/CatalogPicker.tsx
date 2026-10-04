@@ -11,11 +11,13 @@ export function CatalogPicker({
   value,
   onChange,
   kind,
+  extensionOnly = false,
 }: {
   items: Entity[];
   value: string;
   onChange: (id: string) => void;
   kind: string;
+  extensionOnly?: boolean;
 }) {
   const listId = useId();
   const [query, setQuery] = useState("");
@@ -140,7 +142,9 @@ export function CatalogPicker({
           </div>
           {!matches.length && (
             <p className="catalog-no-results">
-              Nenhum item encontrado. Tente outro termo ou cadastre abaixo.
+              {extensionOnly
+                ? "Nenhum item encontrado. Envie pela extensão dentro de um orçamento para começar seu catálogo."
+                : "Nenhum item encontrado. Tente outro termo ou cadastre abaixo."}
             </p>
           )}
         </div>
