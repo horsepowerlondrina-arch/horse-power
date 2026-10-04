@@ -480,6 +480,32 @@ export async function finishCapture(db: DB, ctx: Context, orderId: string) {
             "UPDATE external_captures SET item_id=? WHERE tenant_id=? AND id=?",
           )
           .run(itemId, ctx.tenantId, capture.id);
+        if (capture.source === "tempario") {
+          const [make = "", model = "", vehicleYear = "", engine = ""] =
+            String(capture.vehicle_label || "").split(" · ");
+          await db
+            .prepare(
+              `INSERT INTO service_times(id,tenant_id,catalog_id,capture_id,source,service_name,make,model,vehicle_year,engine,duration_seconds,source_price)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(tenant_id,capture_id) DO UPDATE SET
+                 duration_seconds=excluded.duration_seconds,
+                 source_price=excluded.source_price`,
+            )
+            .run(
+              id(),
+              ctx.tenantId,
+              capture.catalog_id,
+              capture.capture_id,
+              "Tempario",
+              capture.name,
+              make,
+              model,
+              vehicleYear,
+              engine,
+              capture.duration_seconds,
+              capture.source_price,
+            );
+        }
       }
       const subtotal = Number(
         (
@@ -699,7 +725,7 @@ export async function importCapture(db: DB, token: string, input: unknown) {
         v.quantity,
         0,
       );
-    if (v.source === "tempario")
+    if (v.source === "tempario" && !order)
       await db
         .prepare(
           "INSERT INTO service_times(id,tenant_id,catalog_id,capture_id,source,service_name,make,model,vehicle_year,engine,duration_seconds,source_price) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
