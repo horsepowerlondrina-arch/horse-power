@@ -42,10 +42,14 @@ export function OrderView() {
     setBusy(true);
     setError("");
     try {
-      await send(`/orders/${id}/status`, { status: confirm });
+      const result = await send(`/orders/${id}/status`, { status: confirm });
       await refresh();
       setConfirm("");
-      notify("Situação atualizada.");
+      notify(
+        result.warnings?.length
+          ? `OS finalizada com aviso: ${result.warnings.join(" ")}`
+          : "Situação atualizada.",
+      );
       if (confirm === "completed") navigate(`/ordens/${id}/receber`);
     } catch (e) {
       setError((e as Error).message);

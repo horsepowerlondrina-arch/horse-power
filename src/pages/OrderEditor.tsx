@@ -1,7 +1,7 @@
 import { CapturePanel } from "../components/CapturePanel";
 import { OrderPrint } from "../components/OrderPrint";
 import { CatalogPicker } from "../components/CatalogPicker";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
@@ -88,6 +88,10 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [statusPicker, setStatusPicker] = useState(false);
+  const [discountMode, setDiscountMode] = useState<"money" | "percent">(
+    "money",
+  );
+  const [discountPercent, setDiscountPercent] = useState(0);
   const [quickCreate, setQuickCreate] = useState<
     "customers" | "vehicles" | "catalog" | null
   >(null);
@@ -100,7 +104,20 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
   const services = form.items
     .filter((i) => i.kind === "service")
     .reduce((s, i) => s + i.price * i.quantity, 0);
-  const total = products + services - form.discount;
+  const subtotal = products + services;
+  const total = subtotal - form.discount;
+  useEffect(() => {
+    if (discountMode !== "percent") return;
+    const discount = Math.min(
+      subtotal,
+      Math.round((subtotal * Math.max(0, Math.min(100, discountPercent))) / 100),
+    );
+    setForm((current) =>
+      current.discount === discount
+        ? current
+        : { ...current, discount },
+    );
+  }, [discountMode, discountPercent, subtotal]);
   const customer = data.customers.find((c) => c.id === form.customer_id);
   const vehicle = data.vehicles.find((v) => v.id === form.vehicle_id);
   const add = () => {
@@ -190,12 +207,16 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
           { ...form, status: form.status === "quote" ? "quote" : "open" },
           "PUT",
         );
-      await send(`/orders/${order!.id}/status`, { status: confirm });
+      const result = await send(`/orders/${order!.id}/status`, {
+        status: confirm,
+      });
       await refresh();
       notify(
-        confirm === "completed"
-          ? "OS finalizada. Estoque e contas a receber atualizados."
-          : "Situação atualizada.",
+        result.warnings?.length
+          ? `OS finalizada com aviso: ${result.warnings.join(" ")}`
+          : confirm === "completed"
+            ? "OS finalizada. Estoque disponível baixado e contas a receber atualizadas."
+            : "Situação atualizada.",
       );
       setConfirm("");
       navigate(
@@ -773,21 +794,62 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
             </div>
             <div>
               <span>Subtotal</span>
-              <strong>{money(products + services)}</strong>
+              <strong>{money(subtotal)}</strong>
             </div>
-            <Field label="Desconto (R$)">
+            <Field label="Tipo de desconto">
+              <select
+                disabled={!!locked}
+                value={discountMode}
+                onChange={(e) => {
+                  const mode = e.target.value as "money" | "percent";
+                  if (mode === "percent")
+                    setDiscountPercent(
+                      subtotal > 0
+                        ? Number(((form.discount / subtotal) * 100).toFixed(2))
+                        : 0,
+                    );
+                  setDiscountMode(mode);
+                }}
+              >
+                <option value="money">Em dinheiro (R$)</option>
+                <option value="percent">Percentual (%)</option>
+              </select>
+            </Field>
+            <Field
+              label={
+                discountMode === "percent"
+                  ? "Desconto (%)"
+                  : "Desconto (R$)"
+              }
+            >
               <input
                 disabled={!!locked}
                 type="number"
                 min="0"
-                max={(products + services) / 100}
-                step="0.01"
-                value={form.discount / 100}
-                onChange={(e) =>
-                  set("discount", Math.round(Number(e.target.value) * 100))
+                max={discountMode === "percent" ? 100 : subtotal / 100}
+                step={discountMode === "percent" ? "0.01" : "0.01"}
+                value={
+                  discountMode === "percent"
+                    ? discountPercent
+                    : form.discount / 100
                 }
+                onChange={(e) => {
+                  const value = Math.max(0, Number(e.target.value));
+                  if (discountMode === "percent")
+                    setDiscountPercent(Math.min(100, value));
+                  else
+                    set(
+                      "discount",
+                      Math.min(subtotal, Math.round(value * 100)),
+                    );
+                }}
               />
             </Field>
+            {form.discount > 0 && (
+              <small className="muted">
+                Desconto aplicado: {money(form.discount)}
+              </small>
+            )}
           </div>
           <div className="summary-total">
             <span>Total do atendimento</span>

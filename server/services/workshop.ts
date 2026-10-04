@@ -262,6 +262,7 @@ export async function transitionOrder(
   status: Status,
 ) {
   return await transaction(db, async () => {
+    const warnings: string[] = [];
     const order = await scoped(db, "orders", ctx.tenantId, record);
     if (order.status === status)
       throw new Error("O atendimento já está nesta situação.");
@@ -311,14 +312,30 @@ export async function transitionOrder(
         throw new Error(
           "Adicione pelo menos um produto ou serviço para finalizar.",
         );
+      const products = new Map<
+        string,
+        { name: string; quantity: number }
+      >();
       for (const item of items.filter((i) => i.kind === "product")) {
-        const changed = await db
+        const current = products.get(item.catalog_id);
+        products.set(item.catalog_id, {
+          name: current?.name || item.name,
+          quantity: (current?.quantity || 0) + Number(item.quantity),
+        });
+      }
+      for (const [catalogId, item] of products) {
+        const catalog = await scoped(db, "catalog", ctx.tenantId, catalogId);
+        if (Number(catalog.stock) < item.quantity) {
+          warnings.push(
+            `Estoque insuficiente para ${item.name}: necessário ${item.quantity}, disponível ${catalog.stock}. A OS foi finalizada sem baixar esta peça do estoque.`,
+          );
+          continue;
+        }
+        await db
           .prepare(
-            "UPDATE catalog SET stock=stock-? WHERE tenant_id=? AND id=? AND stock>=?",
+            "UPDATE catalog SET stock=stock-? WHERE tenant_id=? AND id=?",
           )
-          .run(item.quantity, ctx.tenantId, item.catalog_id, item.quantity);
-        if (!changed.changes)
-          throw new Error(`Estoque insuficiente: ${item.name}.`);
+          .run(item.quantity, ctx.tenantId, catalogId);
         await db
           .prepare(
             "INSERT INTO stock_movements(id,tenant_id,catalog_id,order_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?,?)",
@@ -326,7 +343,7 @@ export async function transitionOrder(
           .run(
             id(),
             ctx.tenantId,
-            item.catalog_id,
+            catalogId,
             record,
             -item.quantity,
             `OS #${order.number}`,
@@ -376,6 +393,7 @@ export async function transitionOrder(
         : `order.${status}`,
       record,
     );
+    return { warnings };
   });
 }
 export async function settle(

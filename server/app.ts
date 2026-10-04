@@ -960,13 +960,13 @@ export function createApp(db: DB) {
     }),
   );
   app.post("/api/orders/:id/status", async (req, res) => {
-    await transitionOrder(
+    const result = await transitionOrder(
       db,
       res.locals.context,
       String(req.params.id),
       z.enum(statuses).parse(req.body.status),
     );
-    res.json({ ok: true });
+    res.json({ ok: true, ...result });
   });
   app.post("/api/receivables/:id/settle", async (req, res) => {
     await settle(

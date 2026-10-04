@@ -122,7 +122,7 @@ test("orçamento não baixa estoque; aprovação e conclusão geram efeitos úni
     db.close();
   }
 });
-test("estoque insuficiente reverte todos os efeitos, inclusive itens anteriores", async () => {
+test("estoque insuficiente gera aviso mas não bloqueia a finalização da OS", async () => {
   const db = fixture();
   try {
     const record = await saveOrder(
@@ -136,10 +136,9 @@ test("estoque insuficiente reverte todos os efeitos, inclusive itens anteriores"
       }),
     );
     await ready(db, record);
-    await assert.rejects(
-      async () => await transitionOrder(db, ctx, record, "completed"),
-      /insuficiente/,
-    );
+    const result = await transitionOrder(db, ctx, record, "completed");
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /Estoque insuficiente/);
     assert.equal(
       db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!
         .stock,
@@ -147,9 +146,9 @@ test("estoque insuficiente reverte todos os efeitos, inclusive itens anteriores"
     );
     assert.equal(
       db.prepare("SELECT status FROM orders WHERE id=?").get(record)!.status,
-      "ready",
+      "completed",
     );
-    assert.equal(db.prepare("SELECT COUNT(*) n FROM receivables").get()!.n, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM receivables").get()!.n, 1);
     assert.equal(
       db.prepare("SELECT COUNT(*) n FROM stock_movements").get()!.n,
       0,
