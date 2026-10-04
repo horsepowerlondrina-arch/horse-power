@@ -40,7 +40,8 @@ const config = {
   catalog: {
     title: "Produtos e serviços",
     singular: "item",
-    description: "Seu catálogo organizado, do primeiro orçamento à entrega.",
+    description:
+      "Cadastre produtos e serviços manualmente ou importe pelo Sky Peças e Tempario.",
     icon: Package,
   },
   professionals: {
@@ -87,15 +88,35 @@ export function Registers({ kind }: { kind: Kind }) {
         title={c.title}
         description={c.description}
         actions={
-          <button className="button primary" onClick={() => setEditing(null)}>
-            <Plus size={18} />
-            Novo{" "}
-            {kind === "catalog"
-              ? type === "service"
-                ? "serviço"
-                : "produto"
-              : c.singular}
-          </button>
+          kind === "catalog" ? (
+            <div className="capture-actions">
+              <button
+                className="button primary"
+                onClick={() => {
+                  setType("product");
+                  setEditing(null);
+                }}
+              >
+                <Package size={18} />
+                Cadastrar produto
+              </button>
+              <button
+                className="button"
+                onClick={() => {
+                  setType("service");
+                  setEditing(null);
+                }}
+              >
+                <Wrench size={18} />
+                Cadastrar serviço
+              </button>
+            </div>
+          ) : (
+            <button className="button primary" onClick={() => setEditing(null)}>
+              <Plus size={18} />
+              Novo {c.singular}
+            </button>
+          )
         }
       />
       {kind === "catalog" && (
@@ -349,10 +370,35 @@ export function Registers({ kind }: { kind: Kind }) {
         ) : (
           <Empty
             action={
-              <button className="button" onClick={() => setEditing(null)}>
-                <Icon size={16} />
-                Adicionar {c.singular}
-              </button>
+              kind === "catalog" ? (
+                <div className="capture-actions">
+                  <button
+                    className="button"
+                    onClick={() => {
+                      setType("product");
+                      setEditing(null);
+                    }}
+                  >
+                    <Package size={16} />
+                    Cadastrar produto
+                  </button>
+                  <button
+                    className="button"
+                    onClick={() => {
+                      setType("service");
+                      setEditing(null);
+                    }}
+                  >
+                    <Wrench size={16} />
+                    Cadastrar serviço
+                  </button>
+                </div>
+              ) : (
+                <button className="button" onClick={() => setEditing(null)}>
+                  <Icon size={16} />
+                  Adicionar {c.singular}
+                </button>
+              )
             }
           />
         )}
