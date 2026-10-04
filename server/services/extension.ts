@@ -117,17 +117,19 @@ async function redistributeSkyFreight(
         "UPDATE external_captures SET freight_total=?,source_price=? WHERE tenant_id=? AND id=?",
       )
       .run(row.share, price, ctx.tenantId, row.capture.id);
-    await db
-      .prepare(
-        "UPDATE catalog SET cost=?,price=?,cost_known=1,freight_unit=? WHERE tenant_id=? AND id=?",
-      )
-      .run(
-        landedCost,
-        price,
-        freightUnit,
-        ctx.tenantId,
-        row.capture.catalog_id,
-      );
+    if (row.capture.item_id || !session.order_id) {
+      await db
+        .prepare(
+          "UPDATE catalog SET cost=?,price=?,cost_known=1,freight_unit=? WHERE tenant_id=? AND id=?",
+        )
+        .run(
+          landedCost,
+          price,
+          freightUnit,
+          ctx.tenantId,
+          row.capture.catalog_id,
+        );
+    }
     if (row.capture.item_id)
       await db
         .prepare(
@@ -266,12 +268,15 @@ export async function captureState(db: DB, ctx: Context, orderId: string) {
     ? await db
         .prepare(
           `SELECT e.id,e.catalog_id,c.kind,c.name,e.source_quantity quantity,e.source_price price,
-             e.source_cost + CAST(ROUND(e.freight_total * 1.0 / e.source_quantity) AS INTEGER) cost,
-             'sky' capture_source,1 capture_staged,e.id capture_receipt,
-             e.freight_total capture_freight_total
+             CASE
+               WHEN e.source='sky' THEN e.source_cost + CAST(ROUND(e.freight_total * 1.0 / e.source_quantity) AS INTEGER)
+               ELSE c.cost
+             END cost,
+             e.source capture_source,1 capture_staged,e.id capture_receipt,
+             e.freight_total capture_freight_total,e.duration_seconds
            FROM external_captures e
            JOIN catalog c ON c.id=e.catalog_id AND c.tenant_id=e.tenant_id
-           WHERE e.tenant_id=? AND e.order_id=? AND e.batch_id=? AND e.source='sky' AND e.item_id IS NULL
+           WHERE e.tenant_id=? AND e.order_id=? AND e.batch_id=? AND e.item_id IS NULL
            ORDER BY e.created_at,e.id`,
         )
         .all(ctx.tenantId, orderId, session.batch_id)
@@ -284,36 +289,85 @@ export async function captureState(db: DB, ctx: Context, orderId: string) {
   };
 }
 
-export async function updateStagedCaptureQuantity(
+export async function updateStagedCaptureItem(
   db: DB,
   ctx: Context,
   orderId: string,
   captureId: string,
-  quantity: number,
+  input: unknown,
 ) {
   requireAdmin(ctx);
-  quantity = z.number().int().min(0).max(1000).parse(quantity);
+  const v = z
+    .object({
+      quantity: z.number().int().min(0).max(1000).optional(),
+      duration_seconds: z.number().int().min(60).max(3600000).optional(),
+      remove: z.boolean().optional(),
+    })
+    .parse(input);
   return transaction(db, async () => {
     await scoped(db, "orders", ctx.tenantId, orderId);
     const session = await orderCaptureSession(db, ctx, orderId);
     const capture = await db
       .prepare(
-        "SELECT * FROM external_captures WHERE tenant_id=? AND order_id=? AND id=? AND batch_id=? AND source='sky' AND item_id IS NULL",
+        "SELECT * FROM external_captures WHERE tenant_id=? AND order_id=? AND id=? AND batch_id=? AND item_id IS NULL",
       )
       .get(ctx.tenantId, orderId, captureId, session.batch_id);
-    if (!capture) throw new Error("Esta peça não está mais na captura.");
-    if (quantity === 0)
+    if (!capture) throw new Error("Este item não está mais na captura.");
+
+    if (v.remove || (capture.source === "sky" && v.quantity === 0)) {
+      if (capture.source === "tempario")
+        await db
+          .prepare(
+            "DELETE FROM service_times WHERE tenant_id=? AND capture_id=?",
+          )
+          .run(ctx.tenantId, capture.capture_id);
       await db
         .prepare(
           "DELETE FROM external_captures WHERE tenant_id=? AND order_id=? AND id=? AND batch_id=? AND item_id IS NULL",
         )
         .run(ctx.tenantId, orderId, captureId, session.batch_id);
-    else
+    } else if (capture.source === "sky") {
+      if (v.quantity === undefined)
+        throw new Error("Informe a quantidade da peça.");
       await db
         .prepare(
           "UPDATE external_captures SET source_quantity=? WHERE tenant_id=? AND order_id=? AND id=? AND batch_id=? AND item_id IS NULL",
         )
-        .run(quantity, ctx.tenantId, orderId, captureId, session.batch_id);
+        .run(v.quantity, ctx.tenantId, orderId, captureId, session.batch_id);
+    } else {
+      if (v.duration_seconds === undefined)
+        throw new Error("Informe o tempo do serviço.");
+      const oldDuration = Math.max(1, Number(capture.duration_seconds || 1));
+      const newPrice = Math.max(
+        0,
+        Math.round(
+          (Number(capture.source_price || 0) * v.duration_seconds) / oldDuration,
+        ),
+      );
+      await db
+        .prepare(
+          "UPDATE external_captures SET duration_seconds=?,source_price=? WHERE tenant_id=? AND order_id=? AND id=? AND batch_id=? AND item_id IS NULL",
+        )
+        .run(
+          v.duration_seconds,
+          newPrice,
+          ctx.tenantId,
+          orderId,
+          captureId,
+          session.batch_id,
+        );
+      await db
+        .prepare(
+          "UPDATE service_times SET duration_seconds=?,source_price=? WHERE tenant_id=? AND capture_id=?",
+        )
+        .run(
+          v.duration_seconds,
+          newPrice,
+          ctx.tenantId,
+          capture.capture_id,
+        );
+    }
+
     await redistributeSkyFreight(db, ctx, session);
     return captureState(db, ctx, orderId);
   });
@@ -328,12 +382,24 @@ export async function discardCapture(db: DB, ctx: Context, orderId: string) {
         "SELECT * FROM capture_sessions WHERE tenant_id=? AND order_id=? ORDER BY expires_at DESC LIMIT 1",
       )
       .get(ctx.tenantId, orderId);
-    if (session?.batch_id)
+    if (session?.batch_id) {
+      const captures = await db
+        .prepare(
+          "SELECT capture_id FROM external_captures WHERE tenant_id=? AND order_id=? AND batch_id=? AND item_id IS NULL",
+        )
+        .all(ctx.tenantId, orderId, session.batch_id);
+      for (const capture of captures)
+        await db
+          .prepare(
+            "DELETE FROM service_times WHERE tenant_id=? AND capture_id=?",
+          )
+          .run(ctx.tenantId, capture.capture_id);
       await db
         .prepare(
-          "DELETE FROM external_captures WHERE tenant_id=? AND order_id=? AND batch_id=? AND source='sky' AND item_id IS NULL",
+          "DELETE FROM external_captures WHERE tenant_id=? AND order_id=? AND batch_id=? AND item_id IS NULL",
         )
         .run(ctx.tenantId, orderId, session.batch_id);
+    }
     await db
       .prepare("DELETE FROM capture_sessions WHERE tenant_id=? AND order_id=?")
       .run(ctx.tenantId, orderId);
@@ -353,10 +419,10 @@ export async function finishCapture(db: DB, ctx: Context, orderId: string) {
     if (session?.batch_id) {
       const staged = await db
         .prepare(
-          `SELECT e.*,c.kind,c.name
+          `SELECT e.*,c.kind,c.name,c.cost catalog_cost
            FROM external_captures e
            JOIN catalog c ON c.id=e.catalog_id AND c.tenant_id=e.tenant_id
-           WHERE e.tenant_id=? AND e.order_id=? AND e.batch_id=? AND e.source='sky' AND e.item_id IS NULL
+           WHERE e.tenant_id=? AND e.order_id=? AND e.batch_id=? AND e.item_id IS NULL
            ORDER BY e.created_at,e.id`,
         )
         .all(ctx.tenantId, orderId, session.batch_id);
@@ -368,23 +434,31 @@ export async function finishCapture(db: DB, ctx: Context, orderId: string) {
       if (Number(count?.n) + staged.length > 200)
         throw new Error("O orçamento atingiu o limite de 200 itens.");
       for (const capture of staged) {
-        const quantity = Math.max(1, Number(capture.source_quantity || 1));
-        const freightUnit = Math.round(
-          Number(capture.freight_total || 0) / quantity,
-        );
-        const landedCost = Number(capture.source_cost) + freightUnit;
+        const quantity =
+          capture.source === "sky"
+            ? Math.max(1, Number(capture.source_quantity || 1))
+            : 1;
+        const freightUnit =
+          capture.source === "sky"
+            ? Math.round(Number(capture.freight_total || 0) / quantity)
+            : 0;
+        const landedCost =
+          capture.source === "sky"
+            ? Number(capture.source_cost) + freightUnit
+            : Number(capture.catalog_cost || 0);
         const price = Number(capture.source_price);
-        await db
-          .prepare(
-            "UPDATE catalog SET cost=?,price=?,cost_known=1,freight_unit=? WHERE tenant_id=? AND id=?",
-          )
-          .run(
-            landedCost,
-            price,
-            freightUnit,
-            ctx.tenantId,
-            capture.catalog_id,
-          );
+        if (capture.source === "sky")
+          await db
+            .prepare(
+              "UPDATE catalog SET cost=?,price=?,cost_known=1,freight_unit=? WHERE tenant_id=? AND id=?",
+            )
+            .run(
+              landedCost,
+              price,
+              freightUnit,
+              ctx.tenantId,
+              capture.catalog_id,
+            );
         const itemId = id();
         await db
           .prepare(
@@ -594,24 +668,8 @@ export async function importCapture(db: DB, token: string, input: unknown) {
           : 0;
       if (Number(count?.n) + stagedCount >= 200)
         throw new Error("O orçamento atingiu o limite de 200 itens.");
-      if (v.source !== "sky") {
-        itemId = id();
-        await db
-          .prepare(
-            "INSERT INTO order_items(id,tenant_id,order_id,catalog_id,professional_id,kind,name,quantity,price,cost) VALUES(?,?,?,?,NULL,?,?,?,?,?)",
-          )
-          .run(
-            itemId,
-            ctx.tenantId,
-            order.id,
-            catalog.id,
-            catalog.kind,
-            catalog.name,
-            v.quantity,
-            price,
-            catalog.cost,
-          );
-      }
+      // Order captures remain staged until "Concluir captura".
+      itemId = null;
     }
     const label = [
       v.vehicle.make,
@@ -665,10 +723,6 @@ export async function importCapture(db: DB, token: string, input: unknown) {
         );
     if (v.source === "sky")
       await redistributeSkyFreight(db, ctx, s);
-    else if (order)
-      await db
-        .prepare("UPDATE orders SET total=total+? WHERE tenant_id=? AND id=?")
-        .run(price * v.quantity, ctx.tenantId, order.id);
     await audit(db, ctx, "extension.imported", order?.id || s.catalog_target);
     return {
       ok: true,
