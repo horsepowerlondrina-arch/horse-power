@@ -3673,6 +3673,38 @@ body {
 .capture-list b {
   white-space: nowrap;
 }
+.capture-list-row {
+  align-items: center;
+}
+.capture-item-main {
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.capture-inline-field {
+  display: grid;
+  gap: 4px;
+  min-width: 92px;
+}
+.capture-inline-field > span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.capture-inline-field input {
+  width: 100px;
+  box-sizing: border-box;
+}
+.capture-item-value {
+  min-width: 118px;
+  text-align: right;
+}
+@media (max-width: 640px) {
+  .capture-list-row {
+    flex-wrap: wrap;
+  }
+  .capture-item-value {
+    margin-left: auto;
+  }
+}
 .service-times-panel {
   padding: 22px;
 }
