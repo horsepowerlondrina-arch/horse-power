@@ -7,6 +7,7 @@ import {
   importCapture,
   finishCapture,
   suggestedPrice,
+  updateCaptureFreight,
 } from "../server/services/extension";
 import { digest } from "../server/auth/session";
 import { saveOrder } from "../server/services/workshop";
@@ -69,10 +70,91 @@ test("capture connection uses the registered vehicle or a normalized guest plate
     db.close();
   }
 });
+test("Sky freight defaults to one purchase total and is redistributed proportionally", async () => {
+  const db = fixture();
+  try {
+    const batch = randomUUID();
+    const started = await beginCapture(
+      db,
+      ctx,
+      "o",
+      "session",
+      1750,
+      batch,
+    );
+    assert.equal(started.freight_total, 1750);
+    await importCapture(db, started.token, {
+      ...product(),
+      capture_id: randomUUID(),
+      code: "A100",
+      name: "Peça A",
+      cost: 10000,
+      quantity: 1,
+    });
+    await importCapture(db, started.token, {
+      ...product(),
+      capture_id: randomUUID(),
+      code: "B300",
+      name: "Peça B",
+      cost: 30000,
+      quantity: 1,
+    });
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT source_cost,freight_total FROM external_captures WHERE source='sky' ORDER BY source_cost",
+        )
+        .all(),
+      [
+        { source_cost: 10000, freight_total: 438 },
+        { source_cost: 30000, freight_total: 1312 },
+      ],
+    );
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT cost FROM order_items WHERE kind='product' ORDER BY cost",
+        )
+        .all()
+        .map((r: any) => r.cost),
+      [10438, 31312],
+    );
+    await updateCaptureFreight(db, started.token, 2000);
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT source_cost,freight_total FROM external_captures WHERE source='sky' ORDER BY source_cost",
+        )
+        .all(),
+      [
+        { source_cost: 10000, freight_total: 500 },
+        { source_cost: 30000, freight_total: 1500 },
+      ],
+    );
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT cost FROM order_items WHERE kind='product' ORDER BY cost",
+        )
+        .all()
+        .map((r: any) => r.cost),
+      [10500, 31500],
+    );
+    assert.equal(
+      db
+        .prepare("SELECT freight_total FROM capture_sessions WHERE batch_id=?")
+        .get(batch)!.freight_total,
+      2000,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("capture saves quote, catalog and vehicle-specific times atomically; retries and duplicate clicks do not duplicate", async () => {
   const db = fixture();
   try {
-    const { token } = await beginCapture(db, ctx, "o", "session");
+    const { token } = await beginCapture(db, ctx, "o", "session", 0);
     const item = service();
     const results = await Promise.all([
       importCapture(db, token, item),
