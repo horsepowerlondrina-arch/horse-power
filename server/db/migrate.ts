@@ -13,6 +13,7 @@ export function migrate(db: DatabaseSync) {
     [10, "010-capture-freight-total.sql"],
     [11, "011-reusable-order-share.sql"],
     [12, "012-vehicle-entry-checklists.sql"],
+    [13, "013-checklist-plate-first.sql"],
   ] as const) {
     if (db.prepare("SELECT 1 FROM migrations WHERE version=?").get(version))
       continue;
