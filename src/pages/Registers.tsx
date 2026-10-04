@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus,
   Pencil,
@@ -57,7 +57,6 @@ export function Registers({ kind }: { kind: Kind }) {
   const [type, setType] = useState("product");
   const [editing, setEditing] = useState<Entity | null | undefined>();
   const c = config[kind];
-  const extensionOnly = kind === "catalog" && data.catalog_mode === "extension";
   const Icon = c.icon;
   const rows = data[kind].filter(
     (r) =>
@@ -85,27 +84,20 @@ export function Registers({ kind }: { kind: Kind }) {
         eyebrow="CADASTROS"
         title={c.title}
         description={
-          extensionOnly
-            ? "Peças do Sky e serviços do Tempario, salvos automaticamente a cada envio da extensão."
+          kind === "catalog"
+            ? "Cadastre produtos e serviços manualmente ou importe itens do Sky Peças e do Tempario a partir de um orçamento."
             : c.description
         }
         actions={
-          extensionOnly ? (
-            <Link className="button primary" to="/orcamentos">
-              <ArrowUpRight size={18} />
-              Importar em um orçamento
-            </Link>
-          ) : (
-            <button className="button primary" onClick={() => setEditing(null)}>
-              <Plus size={18} />
-              Novo{" "}
-              {kind === "catalog"
-                ? type === "product"
-                  ? "produto"
-                  : "serviço"
-                : c.singular}
-            </button>
-          )
+          <button className="button primary" onClick={() => setEditing(null)}>
+            <Plus size={18} />
+            Novo{" "}
+            {kind === "catalog"
+              ? type === "product"
+                ? "produto"
+                : "serviço"
+              : c.singular}
+          </button>
         }
       />
       <section className="panel register-panel">
@@ -335,28 +327,16 @@ export function Registers({ kind }: { kind: Kind }) {
           </div>
         ) : (
           <Empty
-            title={
-              extensionOnly && !search && filter === "active"
-                ? "Seu catálogo começa pela extensão"
-                : undefined
-            }
             description={
-              extensionOnly
-                ? "Abra um orçamento e use Adicionar produto ou Adicionar serviço. Os itens enviados pela extensão aparecerão aqui para reutilizar."
+              kind === "catalog"
+                ? "Cadastre manualmente um produto ou serviço. Você também pode importar itens pelo Sky Peças ou Tempario dentro de um orçamento."
                 : undefined
             }
             action={
-              extensionOnly ? (
-                <Link className="button" to="/orcamentos">
-                  Abrir orçamentos
-                  <ArrowUpRight size={16} />
-                </Link>
-              ) : (
-                <button className="button" onClick={() => setEditing(null)}>
-                  <Icon size={16} />
-                  Adicionar {c.singular}
-                </button>
-              )
+              <button className="button" onClick={() => setEditing(null)}>
+                <Icon size={16} />
+                Adicionar {c.singular}
+              </button>
             }
           />
         )}
