@@ -1,5 +1,10 @@
 (() => {
-  const types = new Set(["HP_CONNECT", "HP_STATUS", "HP_DISCONNECT"]);
+  const types = new Set([
+    "HP_CONNECT",
+    "HP_STATUS",
+    "HP_SET_FREIGHT",
+    "HP_DISCONNECT",
+  ]);
   window.addEventListener("message", async (event) => {
     if (
       event.source !== window ||
@@ -8,13 +13,14 @@
       !types.has(event.data?.type)
     )
       return;
-    const { requestId, type, target, orderId } = event.data;
+    const { requestId, type, target, orderId, freight_total } = event.data;
     if (typeof requestId !== "string") return;
     try {
       const result = await chrome.runtime.sendMessage({
         type,
         target,
         orderId,
+        freight_total,
       });
       window.postMessage(
         { channel: "horse-power-extension", requestId, result },
