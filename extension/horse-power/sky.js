@@ -213,13 +213,58 @@
       d.innerHTML =
         '<strong>Horse Power</strong><span id="hp-sky-count">0 peça(s)</span><button type="button">Abrir Horse Power</button>';
       d.querySelector("button").onclick = () => window.hpOpenQuote();
+
+      const freight = document.createElement("label");
+      freight.id = "hp-sky-freight";
+      const title = document.createElement("span");
+      title.textContent = "Frete total da compra (R$)";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.step = "0.01";
+      input.value = "17.50";
+      input.addEventListener("change", async () => {
+        const cents = Math.max(
+          0,
+          Math.round(Number(input.value || 0) * 100),
+        );
+        try {
+          const result = await window.hpSetFreight(cents);
+          input.value = (result.freight_total / 100).toFixed(2);
+          toast(
+            `Frete atualizado: R$ ${(result.freight_total / 100)
+              .toFixed(2)
+              .replace(".", ",")}`,
+          );
+          await updateFloat();
+        } catch (e) {
+          toast(e.message);
+        }
+      });
+      freight.append(title, input);
+      d.appendChild(freight);
       document.body.appendChild(d);
     }
     updateFloat();
   }
   async function updateFloat() {
     const e = document.getElementById("hp-sky-count");
-    if (e) e.textContent = await window.hpCaptureStatus();
+    const input = document.querySelector("#hp-sky-freight input");
+    try {
+      const info = await window.hpCaptureInfo();
+      if (e)
+        e.textContent = info.connected
+          ? info.label || `Atendimento #${info.number}`
+          : "Conecte um orçamento na Horse Power";
+      if (input) {
+        input.disabled = !info.connected;
+        if (document.activeElement !== input)
+          input.value = ((info.freightTotal ?? 1750) / 100).toFixed(2);
+      }
+    } catch {
+      if (e) e.textContent = "Conecte um orçamento na Horse Power";
+      if (input) input.disabled = true;
+    }
   }
   let toastTimer;
   function toast(msg) {
