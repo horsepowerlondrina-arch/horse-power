@@ -215,7 +215,7 @@ test("vínculos de outra oficina e veículo de outro cliente são recusados", as
     db.close();
   }
 });
-test("documento finalizado e cancelado não podem ser alterados", async () => {
+test("administrador pode reabrir atendimento cancelado e editar novamente", async () => {
   const db = fixture();
   try {
     const record = await saveOrder(db, ctx, input());
@@ -224,13 +224,67 @@ test("documento finalizado e cancelado não podem ser alterados", async () => {
       async () => await saveOrder(db, ctx, input(), record),
       /não podem/,
     );
+    await transitionOrder(db, ctx, record, "open");
+    await saveOrder(db, ctx, input({ notes: "Reaberta" }), record);
+    const row = db.prepare("SELECT status,kind,notes FROM orders WHERE id=?").get(record)!;
+    assert.deepEqual([row.status, row.kind, row.notes], ["open", "order", "Reaberta"]);
+  } finally {
+    db.close();
+  }
+});
+
+test("OS finalizada pode voltar para execução ou orçamento desfazendo estoque e cobrança aberta", async () => {
+  const db = fixture();
+  try {
+    const record = await saveOrder(db, ctx, input());
+    await ready(db, record);
+    await transitionOrder(db, ctx, record, "completed");
+    const receivable = db.prepare("SELECT id FROM receivables WHERE order_id=?").get(record)!;
+    await configurePlan(db, ctx, String(receivable.id), {
+      method: "Cartão de crédito",
+      installments: 2,
+      card_fee_bps: 0,
+      interest_bps: 0,
+      first_due_on: "2026-09-20",
+    });
+    await transitionOrder(db, ctx, record, "working");
+    assert.equal(
+      db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!.stock,
+      5,
+    );
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM stock_movements WHERE order_id=?").get(record)!.n, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM receivables WHERE order_id=?").get(record)!.n, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM payment_installments").get()!.n, 0);
+    let row = db.prepare("SELECT status,kind,completed_on FROM orders WHERE id=?").get(record)!;
+    assert.deepEqual([row.status, row.kind, row.completed_on], ["working", "order", null]);
+
+    await transitionOrder(db, ctx, record, "quote");
+    row = db.prepare("SELECT status,kind FROM orders WHERE id=?").get(record)!;
+    assert.deepEqual([row.status, row.kind], ["quote", "quote"]);
+  } finally {
+    db.close();
+  }
+});
+
+test("OS com recebimento confirmado não pode ser reaberta", async () => {
+  const db = fixture();
+  try {
+    const record = await saveOrder(db, ctx, input());
+    await ready(db, record);
+    await transitionOrder(db, ctx, record, "completed");
+    const receivable = db.prepare("SELECT id FROM receivables WHERE order_id=?").get(record)!;
+    await settle(db, ctx, String(receivable.id), "Pix");
     await assert.rejects(
-      async () => await transitionOrder(db, ctx, record, "open"),
+      async () => await transitionOrder(db, ctx, record, "working"),
+      /recebimento confirmado/,
     );
     assert.equal(
-      db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!
-        .stock,
-      5,
+      db.prepare("SELECT status FROM orders WHERE id=?").get(record)!.status,
+      "completed",
+    );
+    assert.equal(
+      db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!.stock,
+      3,
     );
   } finally {
     db.close();

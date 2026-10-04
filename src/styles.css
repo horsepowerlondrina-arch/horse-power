@@ -3708,3 +3708,223 @@ body {
 .service-times-panel {
   padding: 22px;
 }
+
+.status-choice-list {
+  display: grid;
+  gap: 9px;
+}
+.status-choice {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+.status-choice:hover {
+  border-color: #d79aa0;
+  background: #fff7f7;
+}
+.status-choice strong {
+  font-size: 14px;
+}
+.status-choice small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+@media print {
+  .hp-print-order {
+    display: block !important;
+    color: #000;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.25;
+  }
+  .hp-print-order * {
+    box-sizing: border-box;
+  }
+  .hp-print-header {
+    display: grid;
+    grid-template-columns: 30mm 1fr auto;
+    gap: 5mm;
+    align-items: center;
+    min-height: 27mm;
+    padding: 1.5mm 1mm 3mm;
+    border-top: 1.2pt solid #000;
+    border-bottom: 1.2pt solid #000;
+  }
+  .hp-print-logo {
+    width: 27mm;
+    height: 27mm;
+    object-fit: contain;
+  }
+  .hp-print-company h1 {
+    margin: 0 0 2mm;
+    font-size: 22pt;
+    line-height: 1;
+    font-weight: 500;
+  }
+  .hp-print-company p {
+    margin: 1mm 0;
+    font-size: 9.5pt;
+  }
+  .hp-print-phone {
+    align-self: center;
+    font-size: 13pt;
+    white-space: nowrap;
+  }
+  .hp-print-titlebar {
+    display: grid;
+    grid-template-columns: 1.4fr 0.7fr 1.2fr;
+    gap: 4mm;
+    align-items: center;
+    padding: 2.2mm 1mm;
+    border-bottom: 1.2pt solid #000;
+    font-size: 13pt;
+  }
+  .hp-print-titlebar > :nth-child(2) {
+    text-align: center;
+  }
+  .hp-print-titlebar > :last-child {
+    text-align: right;
+  }
+  .hp-print-customer {
+    padding: 2mm 1mm 3mm;
+    border-bottom: 1.2pt solid #000;
+  }
+  .hp-print-customer > div {
+    margin: 1.25mm 0;
+  }
+  .hp-print-two {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 8mm;
+  }
+  .hp-print-section {
+    margin-top: 2mm;
+    break-inside: avoid;
+  }
+  .hp-print-section h2 {
+    margin: 0;
+    padding: 1.5mm 1mm 1.2mm;
+    border-bottom: 1.2pt solid #000;
+    font-size: 14pt;
+    font-weight: 500;
+  }
+  .hp-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+  }
+  .hp-print-table th,
+  .hp-print-table td {
+    padding: 1.5mm 1mm;
+    border: 0;
+    border-bottom: 0.65pt dashed #555;
+    font-size: 9.5pt;
+    text-align: left;
+    vertical-align: top;
+  }
+  .hp-print-table thead th {
+    font-weight: 500;
+  }
+  .hp-print-table tfoot th {
+    border-top: 1.2pt solid #000;
+    border-bottom: 1.2pt solid #000;
+    font-size: 10.5pt;
+    font-weight: 500;
+  }
+  .hp-print-services th:last-child,
+  .hp-print-services td:last-child {
+    width: 30%;
+    text-align: right;
+  }
+  .hp-print-products th:nth-child(2),
+  .hp-print-products td:nth-child(2) {
+    width: 20%;
+    text-align: right;
+  }
+  .hp-print-products th:nth-child(3),
+  .hp-print-products td:nth-child(3) {
+    width: 10%;
+    text-align: center;
+  }
+  .hp-print-products th:nth-child(4),
+  .hp-print-products td:nth-child(4) {
+    width: 20%;
+    text-align: right;
+  }
+  .hp-print-notes {
+    margin-top: 2.5mm;
+    padding: 2mm 1mm;
+    border-top: 1pt solid #000;
+    border-bottom: 1pt solid #000;
+    break-inside: avoid;
+  }
+  .hp-print-notes p {
+    margin: 1mm 0;
+    white-space: pre-wrap;
+  }
+  .hp-print-footer {
+    display: grid;
+    grid-template-columns: 1fr 1.05fr;
+    gap: 12mm;
+    margin-top: 5mm;
+    padding: 0 1mm 2mm;
+    border-bottom: 1.2pt solid #000;
+    break-inside: avoid;
+  }
+  .hp-print-dates > p {
+    margin: 1.5mm 0;
+    font-size: 11pt;
+  }
+  .hp-print-signature {
+    width: 80%;
+    margin: 12mm auto 0;
+    text-align: center;
+    font-size: 9pt;
+  }
+  .hp-print-signature span {
+    display: block;
+    border-top: 0.8pt dashed #333;
+    margin-bottom: 1mm;
+  }
+  .hp-print-totalbox h2 {
+    margin: 0 0 2mm;
+    text-align: right;
+    font-size: 20pt;
+    font-weight: 500;
+  }
+  .hp-print-totalbox > div {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8mm;
+    align-items: baseline;
+    padding: 1.2mm 0;
+    font-size: 13pt;
+  }
+  .hp-print-totalbox span,
+  .hp-print-totalbox strong {
+    white-space: nowrap;
+  }
+  .hp-print-totalbox strong {
+    min-width: 28mm;
+    text-align: right;
+    font-weight: 500;
+  }
+  .hp-print-grand-total {
+    margin-top: 1mm;
+    padding-top: 2mm !important;
+    border-top: 1pt dashed #333;
+    font-size: 15pt !important;
+  }
+  @page {
+    size: A4;
+    margin: 10mm 12mm;
+  }
+}

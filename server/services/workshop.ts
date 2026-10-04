@@ -202,6 +202,59 @@ export async function saveOrder(
     return orderId;
   });
 }
+async function reverseCompletedOrder(
+  db: DB,
+  ctx: Context,
+  order: Row,
+) {
+  const receivable = await db
+    .prepare(
+      "SELECT * FROM receivables WHERE tenant_id=? AND order_id=?",
+    )
+    .get(ctx.tenantId, order.id);
+  if (receivable) {
+    const paidInstallment = await db
+      .prepare(
+        "SELECT 1 paid FROM payment_installments WHERE tenant_id=? AND receivable_id=? AND status='paid' LIMIT 1",
+      )
+      .get(ctx.tenantId, receivable.id);
+    const cashEntry = await db
+      .prepare(
+        "SELECT 1 paid FROM cash_entries WHERE tenant_id=? AND receivable_id=? LIMIT 1",
+      )
+      .get(ctx.tenantId, receivable.id);
+    if (receivable.status === "paid" || paidInstallment || cashEntry)
+      throw new Error(
+        "Esta OS já possui recebimento confirmado. Corrija ou estorne o financeiro antes de reabrir a OS.",
+      );
+    await db
+      .prepare(
+        "DELETE FROM payment_installments WHERE tenant_id=? AND receivable_id=?",
+      )
+      .run(ctx.tenantId, receivable.id);
+    await db
+      .prepare("DELETE FROM receivables WHERE tenant_id=? AND id=?")
+      .run(ctx.tenantId, receivable.id);
+  }
+
+  const movements = await db
+    .prepare(
+      "SELECT id,catalog_id,quantity FROM stock_movements WHERE tenant_id=? AND order_id=? AND quantity<0",
+    )
+    .all(ctx.tenantId, order.id);
+  for (const movement of movements)
+    await db
+      .prepare(
+        "UPDATE catalog SET stock=stock+? WHERE tenant_id=? AND id=?",
+      )
+      .run(-Number(movement.quantity), ctx.tenantId, movement.catalog_id);
+  await db
+    .prepare(
+      "DELETE FROM stock_movements WHERE tenant_id=? AND order_id=? AND quantity<0",
+    )
+    .run(ctx.tenantId, order.id);
+}
+
 export async function transitionOrder(
   db: DB,
   ctx: Context,
@@ -210,27 +263,46 @@ export async function transitionOrder(
 ) {
   return await transaction(db, async () => {
     const order = await scoped(db, "orders", ctx.tenantId, record);
-    if (
-      ctx.role !== "owner" &&
-      (order.kind !== "order" ||
+    if (order.status === status)
+      throw new Error("O atendimento já está nesta situação.");
+
+    if (ctx.role !== "owner") {
+      if (
+        order.kind !== "order" ||
         !["working", "ready"].includes(status) ||
-        !["open", "working", "ready"].includes(order.status))
-    )
-      throw Object.assign(
-        new Error("O mecânico pode iniciar ou marcar o serviço como pronto."),
-        { status: 403 },
-      );
-    assertTransition(order.status, status);
-    if (order.kind === "quote" && status === "open") {
+        !["open", "working", "ready"].includes(order.status)
+      )
+        throw Object.assign(
+          new Error("O mecânico pode iniciar ou marcar o serviço como pronto."),
+          { status: 403 },
+        );
+      assertTransition(order.status, status);
+    }
+
+    if (!["quote", "cancelled"].includes(status)) {
       if (!order.customer_id || !order.vehicle_id)
         throw new Error(
-          "Vincule cliente e veículo antes de transformar o orçamento em OS.",
+          "Vincule cliente e veículo antes de transformar o atendimento em OS.",
         );
-      const c = await scoped(db, "customers", ctx.tenantId, order.customer_id),
-        v = await scoped(db, "vehicles", ctx.tenantId, order.vehicle_id);
-      if (!c.active || !v.active || v.customer_id !== c.id)
-        throw new Error("Confira o cliente e o veículo antes da aprovação.");
+      const customer = await scoped(
+          db,
+          "customers",
+          ctx.tenantId,
+          order.customer_id,
+        ),
+        vehicle = await scoped(
+          db,
+          "vehicles",
+          ctx.tenantId,
+          order.vehicle_id,
+        );
+      if (!customer.active || !vehicle.active || vehicle.customer_id !== customer.id)
+        throw new Error("Confira o cliente e o veículo antes de alterar a situação.");
     }
+
+    if (order.status === "completed" && status !== "completed")
+      await reverseCompletedOrder(db, ctx, order);
+
     if (status === "completed") {
       const items = (await db
         .prepare("SELECT * FROM order_items WHERE tenant_id=? AND order_id=?")
@@ -278,18 +350,32 @@ export async function transitionOrder(
             order.total,
           );
     }
+
+    const kind =
+      status === "quote"
+        ? "quote"
+        : status === "cancelled"
+          ? order.kind
+          : "order";
     await db
       .prepare(
         "UPDATE orders SET status=?,kind=?,completed_on=? WHERE tenant_id=? AND id=?",
       )
       .run(
         status,
-        order.kind === "quote" && status === "open" ? "order" : order.kind,
+        kind,
         status === "completed" ? new Date().toISOString() : null,
         ctx.tenantId,
         record,
       );
-    await audit(db, ctx, `order.${status}`, record);
+    await audit(
+      db,
+      ctx,
+      order.status === "completed" && status !== "completed"
+        ? `order.reopened.${status}`
+        : `order.${status}`,
+      record,
+    );
   });
 }
 export async function settle(

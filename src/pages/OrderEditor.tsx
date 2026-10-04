@@ -1,4 +1,5 @@
 import { CapturePanel } from "../components/CapturePanel";
+import { OrderPrint } from "../components/OrderPrint";
 import { CatalogPicker } from "../components/CatalogPicker";
 import { useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
@@ -51,6 +52,7 @@ export function OrderEditor() {
 }
 function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
   const { data, session, refresh, notify } = useApp();
+  const admin = session.role === "owner";
   const navigate = useNavigate();
   const [form, setForm] = useState({
     guest_name: order?.guest_name || "",
@@ -85,6 +87,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState("");
+  const [statusPicker, setStatusPicker] = useState(false);
   const [quickCreate, setQuickCreate] = useState<
     "customers" | "vehicles" | "catalog" | null
   >(null);
@@ -181,7 +184,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     setBusy(true);
     setError("");
     try {
-      if (confirm !== "cancelled")
+      if (!locked && confirm !== "cancelled")
         await send(
           `/orders/${order!.id}`,
           { ...form, status: form.status === "quote" ? "quote" : "open" },
@@ -211,6 +214,14 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     working: ["ready", "Marcar como pronta"],
     ready: ["completed", "Finalizar OS"],
   };
+  const statusOptions = [
+    ["quote", "Orçamento", "Voltar o atendimento para orçamento."],
+    ["open", "OS aberta", "Deixar a OS aberta, antes do início da execução."],
+    ["working", "Em execução", "Retomar ou colocar a OS em execução."],
+    ["ready", "Pronta para entrega", "Marcar a OS como pronta para entrega."],
+    ["completed", "Finalizada", "Finalizar a OS, baixar estoque e gerar cobrança."],
+    ["cancelled", "Cancelada", "Cancelar o atendimento mantendo o histórico."],
+  ] as const;
   return (
     <>
       <div className="no-print">
@@ -259,62 +270,22 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
           }
         />
       </div>
-      <section className="print-only print-order">
-        <h1>HORSE POWER</h1>
-        <h2>{session.tenant.name}</h2>
-        <p>
-          {session.tenant.address} · {session.tenant.phone}
-        </p>
-        <hr />
-        <h2>
-          {form.status === "quote" ? "Orçamento" : "Ordem de serviço"} #
-          {order?.number || "Novo"}
-        </h2>
-        <p>
-          Situação: {statusLabel[form.status]} · Entrada: {form.entered_on} ·
-          Previsão: {form.due_on}
-        </p>
-        <p>
-          Cliente: {customer?.name} · {customer?.phone} · {customer?.document}
-        </p>
-        <p>{customer?.address}</p>
-        <p>
-          Veículo: {vehicle?.brand} {vehicle?.model} · {vehicle?.plate} ·{" "}
-          {form.km} km · Chassi: {vehicle?.chassis || "—"}
-        </p>
-        <p>Relato: {form.problem || "—"}</p>
-        <table>
-          <thead>
-            <tr>
-              <th>Produto / serviço</th>
-              <th>Qtd.</th>
-              <th>Unitário</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {form.items.map((i) => (
-              <tr key={i.id}>
-                <td>{i.name}</td>
-                <td>{i.quantity}</td>
-                <td>{money(i.price)}</td>
-                <td>{money(i.price * i.quantity)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p>
-          Produtos: {money(products)} · Serviços: {money(services)} · Desconto:{" "}
-          {money(form.discount)}
-        </p>
-        <h2>Total: {money(total)}</h2>
-        <p>Observações: {form.notes || "—"}</p>
-        <p>
-          ___________________________________
-          <br />
-          Assinatura do cliente
-        </p>
-      </section>
+      <OrderPrint
+        order={{
+          ...(order || {}),
+          ...form,
+          number: order?.number || "—",
+          kind: form.status === "quote" ? "quote" : "order",
+          customer_name: customer?.name || form.guest_name,
+          plate: vehicle?.plate || form.guest_plate,
+          brand: vehicle?.brand || "",
+          model: vehicle?.model || form.guest_vehicle,
+          items: form.items,
+        }}
+        tenant={session.tenant}
+        customer={customer}
+        vehicle={vehicle}
+      />
       <div className="editor-layout no-print">
         <section className="panel editor-main">
           <div className="tabs">
@@ -826,6 +797,15 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
               ? "O orçamento não movimenta estoque nem gera cobrança."
               : "Ao finalizar, as peças são baixadas do estoque e o valor é lançado em contas a receber."}
           </p>
+          {order && admin && (
+            <button
+              className="button full-width"
+              disabled={busy}
+              onClick={() => setStatusPicker(true)}
+            >
+              Alterar status
+            </button>
+          )}
           {order && next[order.status] && (
             <button
               className="button primary full-width"
@@ -923,19 +903,45 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
           }}
         />
       )}
+      {statusPicker && order && (
+        <Modal
+          title="Alterar status do atendimento"
+          description="Como administrador, você pode avançar ou voltar o atendimento. Ao reabrir uma OS finalizada, estoque e cobrança aberta são desfeitos automaticamente."
+          onClose={() => setStatusPicker(false)}
+        >
+          <div className="modal-body status-choice-list">
+            {statusOptions
+              .filter(([value]) => value !== order.status)
+              .map(([value, label, description]) => (
+                <button
+                  type="button"
+                  className="status-choice"
+                  key={value}
+                  onClick={() => {
+                    setStatusPicker(false);
+                    setConfirm(value);
+                  }}
+                >
+                  <strong>{label}</strong>
+                  <small>{description}</small>
+                </button>
+              ))}
+          </div>
+        </Modal>
+      )}
       {confirm && (
         <Modal
-          title={
-            confirm === "cancelled"
-              ? "Cancelar este atendimento?"
-              : next[order!.status]?.[1] || "Alterar situação"
-          }
+          title={`Alterar status para ${statusLabel[confirm] || confirm}?`}
           description={
-            confirm === "completed"
-              ? "Esta ação baixa os produtos do estoque, gera o recebível e bloqueia a edição da OS."
-              : confirm === "cancelled"
-                ? "O atendimento será preservado no histórico como cancelado. Esta ação não pode ser desfeita nesta fase."
-                : "Os dados atuais serão salvos e o atendimento seguirá para a próxima etapa."
+            order!.status === "completed" && confirm !== "completed"
+              ? "A finalização será desfeita: as peças baixadas voltarão ao estoque e a cobrança ainda não recebida será removida. Se já houver pagamento confirmado, a reabertura será bloqueada."
+              : confirm === "completed"
+                ? "Esta ação baixa os produtos do estoque, gera a cobrança e bloqueia a edição até que a OS seja reaberta."
+                : confirm === "quote"
+                  ? "O atendimento voltará a ser orçamento e poderá ser editado normalmente."
+                  : confirm === "cancelled"
+                    ? "O atendimento será preservado no histórico como cancelado e poderá ser reaberto pelo administrador."
+                    : "Os dados atuais serão salvos e o atendimento seguirá para a situação escolhida."
           }
           onClose={() => !busy && setConfirm("")}
         >

@@ -1,9 +1,10 @@
 import { ShareOrder } from "../components/ShareOrder";
+import { OrderPrint } from "../components/OrderPrint";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../lib/context";
 import { send } from "../lib/api";
-import { money, dateLabel } from "../lib/types";
+import { money, dateLabel, statusLabel } from "../lib/types";
 import { displayStatus } from "../lib/workflow";
 import { PageHeading, Badge, Empty, Modal, Field } from "../components/ui";
 export function OrderView() {
@@ -16,9 +17,20 @@ export function OrderView() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [editingNotes, setEditingNotes] = useState(false),
-    [notes, setNotes] = useState("");
+    [notes, setNotes] = useState(""),
+    [statusPicker, setStatusPicker] = useState(false);
   if (!order) return <Empty title="Atendimento não encontrado" />;
   const editable = ["quote", "open", "working", "ready"].includes(order.status);
+  const customer = data.customers.find((c) => c.id === order.customer_id);
+  const vehicle = data.vehicles.find((v) => v.id === order.vehicle_id);
+  const statusOptions = [
+    ["quote", "Orçamento", "Voltar o atendimento para orçamento."],
+    ["open", "OS aberta", "Deixar a OS aberta, antes do início da execução."],
+    ["working", "Em execução", "Retomar ou colocar a OS em execução."],
+    ["ready", "Pronta para entrega", "Marcar a OS como pronta para entrega."],
+    ["completed", "Finalizada", "Finalizar a OS, baixar estoque e gerar cobrança."],
+    ["cancelled", "Cancelada", "Cancelar o atendimento mantendo o histórico."],
+  ] as const;
   const next: Record<string, [string, string]> = {
     quote: ["open", "Aprovar orçamento"],
     open: ["working", "Iniciar execução"],
@@ -52,12 +64,13 @@ export function OrderView() {
       >
         ← Voltar à lista
       </button>
-      <div className="print-only">
-        <h2>{session.tenant.name}</h2>
-        <p>
-          {session.tenant.address} · {session.tenant.phone}
-        </p>
-      </div>
+      <OrderPrint
+        order={order}
+        tenant={session.tenant}
+        customer={customer}
+        vehicle={vehicle}
+      />
+      <div className="no-print">
       <PageHeading
         eyebrow={order.kind === "quote" ? "ORÇAMENTO" : "ORDEM DE SERVIÇO"}
         title={`#${order.number} · ${order.plate || "Sem placa"}`}
@@ -65,6 +78,11 @@ export function OrderView() {
         actions={
           <div className="no-print action-row">
             {admin && <ShareOrder order={order} />}
+            {admin && (
+              <button className="button" onClick={() => setStatusPicker(true)}>
+                Alterar status
+              </button>
+            )}
             <button className="button" onClick={() => window.print()}>
               Imprimir / PDF
             </button>
@@ -188,25 +206,52 @@ export function OrderView() {
       </section>
       {admin && editable && (
         <button
-          className="text-button danger no-print"
+          className="text-button danger"
           onClick={() => setConfirm("cancelled")}
         >
           Cancelar {order.kind === "quote" ? "orçamento" : "OS"}
         </button>
       )}
+      </div>
+      {statusPicker && (
+        <Modal
+          title="Alterar status do atendimento"
+          description="Como administrador, você pode avançar ou voltar o atendimento. Ao reabrir uma OS finalizada, estoque e cobrança aberta são desfeitos automaticamente."
+          onClose={() => setStatusPicker(false)}
+        >
+          <div className="modal-body status-choice-list">
+            {statusOptions
+              .filter(([value]) => value !== order.status)
+              .map(([value, label, description]) => (
+                <button
+                  type="button"
+                  className="status-choice"
+                  key={value}
+                  onClick={() => {
+                    setStatusPicker(false);
+                    setConfirm(value);
+                  }}
+                >
+                  <strong>{label}</strong>
+                  <small>{description}</small>
+                </button>
+              ))}
+          </div>
+        </Modal>
+      )}
       {confirm && (
         <Modal
-          title={
-            confirm === "cancelled"
-              ? "Cancelar atendimento?"
-              : action?.[1] || "Atualizar situação"
-          }
+          title={`Alterar status para ${statusLabel[confirm] || confirm}?`}
           description={
-            confirm === "completed"
-              ? "As peças serão baixadas do estoque e você seguirá para o recebimento."
-              : confirm === "cancelled"
-                ? "O registro será preservado e poderá ser encontrado pelo filtro de cancelados."
-                : "Confirme para avançar o atendimento."
+            order.status === "completed" && confirm !== "completed"
+              ? "A finalização será desfeita: as peças baixadas voltarão ao estoque e a cobrança ainda não recebida será removida. Se já houver pagamento confirmado, a reabertura será bloqueada."
+              : confirm === "completed"
+                ? "As peças serão baixadas do estoque e você seguirá para o recebimento."
+                : confirm === "quote"
+                  ? "O atendimento voltará a ser orçamento e poderá ser editado normalmente."
+                  : confirm === "cancelled"
+                    ? "O registro será preservado no histórico como cancelado."
+                    : "Confirme a nova situação do atendimento."
           }
           onClose={() => !busy && setConfirm("")}
         >
