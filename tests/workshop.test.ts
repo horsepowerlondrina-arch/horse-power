@@ -313,6 +313,27 @@ test("API autentica, protege oficinas, valida entrada e revoga sessão", async (
       workspace.customers.map((c: any) => c.id),
       ["a-customer"],
     );
+    db.prepare("UPDATE tenants SET catalog_mode='extension' WHERE id='a'").run();
+    const manualCatalog = await request("/catalog", "POST", {
+      kind: "service",
+      name: "Diagnóstico manual",
+      sku: "MAN-SVC",
+      category: "Manual",
+      cost: 0,
+      price: 17000,
+      stock: 0,
+      minimum_stock: 0,
+      active: 1,
+    });
+    assert.equal(manualCatalog.status, 200, await manualCatalog.text());
+    assert.equal(
+      db
+        .prepare(
+          "SELECT COUNT(*) n FROM catalog WHERE tenant_id='a' AND name='Diagnóstico manual'",
+        )
+        .get()!.n,
+      1,
+    );
     assert.equal(
       (await request("/tenant", "POST", { tenant_id: "b" })).status,
       403,
