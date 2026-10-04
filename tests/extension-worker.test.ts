@@ -88,7 +88,7 @@ const connect = {
     plate: "ABC1D23",
   },
 };
-test("only Tempario and the popup receive the active plate without credentials", async () => {
+test("Sky, Tempario and the popup receive the active plate without credentials", async () => {
   const w = worker();
   await w.send(connect, app);
   const vehicle = await w.send({ type: "HP_VEHICLE" }, tempario);
@@ -99,10 +99,15 @@ test("only Tempario and the popup receive the active plate without credentials",
   assert.ok(vehicle.expires > Date.now());
   assert.equal(vehicle.token, undefined);
   assert.equal(vehicle.origin, undefined);
+  const skyVehicle = await w.send({ type: "HP_VEHICLE" }, sky);
+  assert.equal(skyVehicle.plate, "ABC1D23");
+  assert.equal(skyVehicle.number, 123);
+  assert.equal(skyVehicle.token, undefined);
+  assert.equal(skyVehicle.origin, undefined);
   assert.equal((await w.send({ type: "HP_STATUS" }, sky)).plate, undefined);
   for (const sender of [
-    sky,
     app,
+    { ...sky, frameId: 1 },
     { ...tempario, frameId: 1 },
     { ...tempario, url: "https://evil.example" },
   ])
