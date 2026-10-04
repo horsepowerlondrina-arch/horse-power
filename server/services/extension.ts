@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { type DB, transaction } from "../db/database.js";
 import { digest, type Context } from "../auth/session.js";
@@ -38,12 +38,157 @@ export const captureSchema = z
       });
   });
 export { legacyPrice as suggestedPrice } from "./partsPricing.js";
+
+async function activeCaptureSession(db: DB, token: string) {
+  if (!/^[a-f0-9]{64}$/.test(token))
+    throw Object.assign(
+      new Error("Conecte a extensão novamente no orçamento."),
+      { status: 401 },
+    );
+  const s = await db
+    .prepare(
+      `SELECT c.* FROM capture_sessions c JOIN sessions s ON s.token_hash=c.session_hash AND s.user_id=c.user_id AND s.tenant_id=c.tenant_id
+      JOIN memberships m ON m.user_id=c.user_id AND m.tenant_id=c.tenant_id
+      WHERE c.token_hash=? AND c.expires_at>? AND s.expires_at>? AND m.role='owner'`,
+    )
+    .get(digest(token), Date.now(), Date.now());
+  if (!s)
+    throw Object.assign(
+      new Error("Conexão expirada. Abra o orçamento e conecte novamente."),
+      { status: 401 },
+    );
+  return s;
+}
+
+async function redistributeSkyFreight(
+  db: DB,
+  ctx: Context,
+  session: Record<string, any>,
+) {
+  const batchId = String(session.batch_id || "");
+  const freightTotal = Number(session.freight_total || 0);
+  if (!batchId) return { freight_total: freightTotal, item_count: 0 };
+
+  const targetId = String(session.order_id || session.catalog_target || "");
+  const targetColumn = session.order_id ? "order_id" : "catalog_target";
+  const captures = await db
+    .prepare(
+      `SELECT * FROM external_captures
+       WHERE tenant_id=? AND batch_id=? AND source='sky' AND ${targetColumn}=?
+       ORDER BY created_at,id`,
+    )
+    .all(ctx.tenantId, batchId, targetId);
+  if (!captures.length)
+    return { freight_total: freightTotal, item_count: 0 };
+
+  const rows = captures.map((capture) => {
+    const quantity = Math.max(1, Number(capture.source_quantity || 1));
+    const basis = BigInt(Number(capture.source_cost)) * BigInt(quantity);
+    return { capture, quantity, basis, share: 0, remainder: 0n };
+  });
+  const totalBasis = rows.reduce((sum, row) => sum + row.basis, 0n);
+  if (totalBasis <= 0n)
+    return { freight_total: freightTotal, item_count: rows.length };
+
+  let distributed = 0;
+  for (const row of rows) {
+    const numerator = BigInt(freightTotal) * row.basis;
+    row.share = Number(numerator / totalBasis);
+    row.remainder = numerator % totalBasis;
+    distributed += row.share;
+  }
+  const centsLeft = freightTotal - distributed;
+  const byRemainder = [...rows].sort((a, b) => {
+    if (a.remainder === b.remainder)
+      return String(a.capture.id).localeCompare(String(b.capture.id));
+    return a.remainder > b.remainder ? -1 : 1;
+  });
+  for (let i = 0; i < centsLeft; i++) byRemainder[i].share += 1;
+
+  for (const row of rows) {
+    const sourceCost = Number(row.capture.source_cost);
+    const freightUnit = Math.round(row.share / row.quantity);
+    const landedCost = sourceCost + freightUnit;
+    if (landedCost > 100000000)
+      throw new Error("Custo com frete acima do limite.");
+    const price = await workshopPrice(db, ctx.tenantId, landedCost);
+    await db
+      .prepare(
+        "UPDATE external_captures SET freight_total=?,source_price=? WHERE tenant_id=? AND id=?",
+      )
+      .run(row.share, price, ctx.tenantId, row.capture.id);
+    await db
+      .prepare(
+        "UPDATE catalog SET cost=?,price=?,cost_known=1,freight_unit=? WHERE tenant_id=? AND id=?",
+      )
+      .run(
+        landedCost,
+        price,
+        freightUnit,
+        ctx.tenantId,
+        row.capture.catalog_id,
+      );
+    if (row.capture.item_id)
+      await db
+        .prepare(
+          "UPDATE order_items SET cost=?,price=? WHERE tenant_id=? AND id=?",
+        )
+        .run(landedCost, price, ctx.tenantId, row.capture.item_id);
+  }
+
+  if (session.order_id) {
+    const order = await scoped(db, "orders", ctx.tenantId, session.order_id);
+    const subtotal = Number(
+      (
+        await db
+          .prepare(
+            "SELECT COALESCE(SUM(price*quantity),0) subtotal FROM order_items WHERE tenant_id=? AND order_id=?",
+          )
+          .get(ctx.tenantId, session.order_id)
+      )?.subtotal || 0,
+    );
+    await db
+      .prepare("UPDATE orders SET total=? WHERE tenant_id=? AND id=?")
+      .run(
+        Math.max(0, subtotal - Number(order.discount || 0)),
+        ctx.tenantId,
+        session.order_id,
+      );
+  }
+  return { freight_total: freightTotal, item_count: rows.length };
+}
+
+export async function updateCaptureFreight(
+  db: DB,
+  token: string,
+  freightTotal: number,
+) {
+  return transaction(db, async () => {
+    const s = await activeCaptureSession(db, token);
+    const ctx: Context = {
+      tenantId: String(s.tenant_id),
+      userId: String(s.user_id),
+      role: "owner",
+    };
+    await db
+      .prepare(
+        "UPDATE capture_sessions SET freight_total=? WHERE token_hash=? AND tenant_id=?",
+      )
+      .run(freightTotal, s.token_hash, ctx.tenantId);
+    return redistributeSkyFreight(db, ctx, {
+      ...s,
+      freight_total: freightTotal,
+    });
+  });
+}
+
 export async function beginCapture(
   db: DB,
   ctx: Context,
   orderId: string,
   sessionToken: string,
-  freightUnit = 0,
+  freightTotal = 1750,
+  batchId = randomUUID(),
 ) {
   requireAdmin(ctx);
   return transaction(db, async () => {
@@ -58,6 +203,7 @@ export async function beginCapture(
     const plate = String(vehicle?.plate || order?.guest_plate || "")
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "");
+    batchId = z.string().uuid().parse(batchId);
     const token = randomBytes(32).toString("hex");
     await db
       .prepare(
@@ -66,7 +212,7 @@ export async function beginCapture(
       .run(ctx.tenantId, orderId, Date.now());
     await db
       .prepare(
-        "INSERT INTO capture_sessions(token_hash,tenant_id,user_id,session_hash,order_id,expires_at,freight_unit) VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO capture_sessions(token_hash,tenant_id,user_id,session_hash,order_id,expires_at,freight_unit,batch_id,freight_total) VALUES(?,?,?,?,?,?,0,?,?)",
       )
       .run(
         digest(token),
@@ -75,7 +221,8 @@ export async function beginCapture(
         digest(sessionToken),
         orderId,
         Date.now() + 1800000,
-        freightUnit,
+        batchId,
+        freightTotal,
       );
     return {
       token,
@@ -83,6 +230,8 @@ export async function beginCapture(
       label: `${order.kind === "quote" ? "Orçamento" : "OS"} #${order.number}`,
       number: order.number,
       plate: /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(plate) ? plate : "",
+      batch_id: batchId,
+      freight_total: freightTotal,
       expires_minutes: 30,
     };
   });
@@ -92,10 +241,19 @@ export async function captureState(db: DB, ctx: Context, orderId: string) {
   const order = await scoped(db, "orders", ctx.tenantId, orderId);
   const items = await db
     .prepare(
-      "SELECT i.*,e.duration_seconds,e.source capture_source,e.vehicle_label FROM order_items i LEFT JOIN external_captures e ON e.item_id=i.id AND e.tenant_id=i.tenant_id WHERE i.tenant_id=? AND i.order_id=?",
+      "SELECT i.*,e.duration_seconds,e.source capture_source,e.vehicle_label,e.freight_total capture_freight_total FROM order_items i LEFT JOIN external_captures e ON e.item_id=i.id AND e.tenant_id=i.tenant_id WHERE i.tenant_id=? AND i.order_id=?",
     )
     .all(ctx.tenantId, orderId);
-  return { items, total: order.total };
+  const session = await db
+    .prepare(
+      "SELECT freight_total FROM capture_sessions WHERE tenant_id=? AND order_id=? ORDER BY expires_at DESC LIMIT 1",
+    )
+    .get(ctx.tenantId, orderId);
+  return {
+    items,
+    total: order.total,
+    freight_total: Number(session?.freight_total ?? 1750),
+  };
 }
 export async function finishCapture(db: DB, ctx: Context, orderId: string) {
   requireAdmin(ctx);
@@ -108,25 +266,9 @@ export async function finishCapture(db: DB, ctx: Context, orderId: string) {
   });
 }
 export async function importCapture(db: DB, token: string, input: unknown) {
-  if (!/^[a-f0-9]{64}$/.test(token))
-    throw Object.assign(
-      new Error("Conecte a extensão novamente no orçamento."),
-      { status: 401 },
-    );
   const v = captureSchema.parse(input);
   return transaction(db, async () => {
-    const s = await db
-      .prepare(
-        `SELECT c.* FROM capture_sessions c JOIN sessions s ON s.token_hash=c.session_hash AND s.user_id=c.user_id AND s.tenant_id=c.tenant_id
-      JOIN memberships m ON m.user_id=c.user_id AND m.tenant_id=c.tenant_id
-      WHERE c.token_hash=? AND c.expires_at>? AND s.expires_at>? AND m.role='owner'`,
-      )
-      .get(digest(token), Date.now(), Date.now());
-    if (!s)
-      throw Object.assign(
-        new Error("Conexão expirada. Abra o orçamento e conecte novamente."),
-        { status: 401 },
-      );
+    const s = await activeCaptureSession(db, token);
     const ctx = {
       tenantId: String(s.tenant_id),
       userId: String(s.user_id),
@@ -211,8 +353,7 @@ export async function importCapture(db: DB, token: string, input: unknown) {
       throw new Error(
         "Este item está inativo no catálogo. Reative-o antes de importar.",
       );
-    const landedCost =
-      v.cost + (v.source === "sky" ? Number(s.freight_unit || 0) : 0);
+    const landedCost = v.cost;
     if (landedCost > 100000000)
       throw new Error("Custo com frete acima do limite.");
     const price =
@@ -243,7 +384,7 @@ export async function importCapture(db: DB, token: string, input: unknown) {
         .prepare(
           "UPDATE catalog SET cost=?,price=?,cost_known=1,freight_unit=? WHERE tenant_id=? AND id=?",
         )
-        .run(landedCost, price, s.freight_unit || 0, ctx.tenantId, catalog.id);
+        .run(landedCost, price, 0, ctx.tenantId, catalog.id);
       catalog = { ...catalog, cost: landedCost, price };
     }
     await db
@@ -300,7 +441,7 @@ export async function importCapture(db: DB, token: string, input: unknown) {
       .join(" · ");
     await db
       .prepare(
-        "INSERT INTO external_captures(id,tenant_id,capture_id,order_id,item_id,catalog_id,source,external_key,payload_hash,duration_seconds,source_cost,source_price,vehicle_label,catalog_target) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO external_captures(id,tenant_id,capture_id,order_id,item_id,catalog_id,source,external_key,payload_hash,duration_seconds,source_cost,source_price,vehicle_label,catalog_target,batch_id,source_quantity,freight_total) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id(),
@@ -317,6 +458,9 @@ export async function importCapture(db: DB, token: string, input: unknown) {
         price,
         label,
         s.catalog_target ?? null,
+        s.batch_id ?? null,
+        v.quantity,
+        0,
       );
     if (v.source === "tempario")
       await db
@@ -337,7 +481,9 @@ export async function importCapture(db: DB, token: string, input: unknown) {
           v.duration_seconds,
           v.price,
         );
-    if (order)
+    if (v.source === "sky")
+      await redistributeSkyFreight(db, ctx, s);
+    else if (order)
       await db
         .prepare("UPDATE orders SET total=total+? WHERE tenant_id=? AND id=?")
         .run(price * v.quantity, ctx.tenantId, order.id);
@@ -357,10 +503,12 @@ export async function beginCatalogCapture(
   ctx: Context,
   target: string,
   sessionToken: string,
-  freightUnit = 0,
+  freightTotal = 1750,
+  batchId = randomUUID(),
 ) {
   requireAdmin(ctx);
   z.string().uuid().parse(target);
+  batchId = z.string().uuid().parse(batchId);
   return transaction(db, async () => {
     await db
       .prepare(
@@ -370,7 +518,7 @@ export async function beginCatalogCapture(
     const token = randomBytes(32).toString("hex");
     await db
       .prepare(
-        "INSERT INTO capture_sessions(token_hash,tenant_id,user_id,session_hash,order_id,catalog_target,expires_at,freight_unit) VALUES(?,?,?,?,NULL,?,?,?)",
+        "INSERT INTO capture_sessions(token_hash,tenant_id,user_id,session_hash,order_id,catalog_target,expires_at,freight_unit,batch_id,freight_total) VALUES(?,?,?,?,NULL,?,?,0,?,?)",
       )
       .run(
         digest(token),
@@ -379,7 +527,8 @@ export async function beginCatalogCapture(
         digest(sessionToken),
         target,
         Date.now() + 1800000,
-        freightUnit,
+        batchId,
+        freightTotal,
       );
     return {
       token,
@@ -388,6 +537,8 @@ export async function beginCatalogCapture(
       destination: "catalog",
       label: "Catálogo",
       plate: "",
+      batch_id: batchId,
+      freight_total: freightTotal,
       expires_minutes: 30,
     };
   });
@@ -401,6 +552,11 @@ export async function catalogCaptureState(
   requireAdmin(ctx);
   z.string().uuid().parse(target);
   return transaction(db, async () => {
+    const session = await db
+      .prepare(
+        "SELECT freight_total FROM capture_sessions WHERE tenant_id=? AND catalog_target=? ORDER BY expires_at DESC LIMIT 1",
+      )
+      .get(ctx.tenantId, target);
     if (finish)
       await db
         .prepare(
@@ -412,6 +568,9 @@ export async function catalogCaptureState(
         "SELECT c.*,e.id capture_receipt,e.source capture_source,e.duration_seconds,1 quantity FROM external_captures e JOIN catalog c ON c.id=e.catalog_id AND c.tenant_id=e.tenant_id WHERE e.tenant_id=? AND e.catalog_target=? AND c.archived_at IS NULL ORDER BY e.created_at DESC",
       )
       .all(ctx.tenantId, target);
-    return { items: [...new Map(items.map((i) => [i.id, i])).values()] };
+    return {
+      items: [...new Map(items.map((i) => [i.id, i])).values()],
+      freight_total: Number(session?.freight_total ?? 1750),
+    };
   });
 }
