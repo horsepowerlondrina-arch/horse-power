@@ -631,7 +631,7 @@ export async function importCapture(db: DB, token: string, input: unknown) {
         "INSERT INTO external_catalog_links(tenant_id,source,external_key,catalog_id) VALUES(?,?,?,?) ON CONFLICT(tenant_id,source,external_key) DO UPDATE SET catalog_id=excluded.catalog_id",
       )
       .run(ctx.tenantId, v.source, key, catalog.id);
-    // A repeated click never increments quantities silently. Sky pieces stay staged
+    // A repeated click never increments quantities silently. Order captures stay staged
     // until the user explicitly concludes the capture.
     let itemId: string | null = null;
     if (order) {
@@ -654,18 +654,15 @@ export async function importCapture(db: DB, token: string, input: unknown) {
           "SELECT COUNT(*) n FROM order_items WHERE tenant_id=? AND order_id=?",
         )
         .get(ctx.tenantId, order.id);
-      const stagedCount =
-        v.source === "sky"
-          ? Number(
-              (
-                await db
-                  .prepare(
-                    "SELECT COUNT(*) n FROM external_captures WHERE tenant_id=? AND order_id=? AND batch_id=? AND source='sky' AND item_id IS NULL",
-                  )
-                  .get(ctx.tenantId, order.id, s.batch_id ?? "")
-              )?.n || 0,
+      const stagedCount = Number(
+        (
+          await db
+            .prepare(
+              "SELECT COUNT(*) n FROM external_captures WHERE tenant_id=? AND order_id=? AND batch_id=? AND item_id IS NULL",
             )
-          : 0;
+            .get(ctx.tenantId, order.id, s.batch_id ?? "")
+        )?.n || 0,
+      );
       if (Number(count?.n) + stagedCount >= 200)
         throw new Error("O orçamento atingiu o limite de 200 itens.");
       // Order captures remain staged until "Concluir captura".
