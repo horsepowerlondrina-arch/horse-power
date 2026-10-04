@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Horse Power · Conector",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Envie peças do Sky e serviços do Tempario ao orçamento da Horse Power.",
   "permissions": ["storage"],
   "host_permissions": [
@@ -13,7 +13,7 @@
   "content_scripts": [
     {
       "matches": ["https://cliente.skypecas.com.br/*"],
-      "js": ["transport.js", "sky.js"],
+      "js": ["transport.js", "sky.js", "sky-plate.js"],
       "css": ["capture.css"],
       "run_at": "document_idle"
     },
