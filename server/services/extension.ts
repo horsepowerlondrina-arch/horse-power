@@ -247,7 +247,7 @@ async function orderCaptureSession(db: DB, ctx: Context, orderId: string) {
     )
     .get(ctx.tenantId, orderId);
   if (!session)
-    throw new Error("Abra a captura novamente antes de alterar as peças.");
+    throw new Error("Abra a captura novamente antes de alterar os itens.");
   return session;
 }
 
