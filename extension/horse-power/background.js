@@ -89,7 +89,7 @@ async function handle(msg, sender) {
   }
   if (
     msg.type === "HP_VEHICLE" &&
-    (isPopup || (sources[origin] === "tempario" && sender.frameId === 0))
+    (isPopup || (!!sources[origin] && sender.frameId === 0))
   ) {
     const { target } = await chrome.storage.session.get("target");
     if (!target || target.expires <= Date.now())
