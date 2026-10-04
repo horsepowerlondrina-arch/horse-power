@@ -603,9 +603,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                       : "Serviços do atendimento"}
                   </h3>
                   <p className="muted">
-                    {data.catalog_mode === "extension"
-                      ? "Importe pela extensão ou reutilize os itens já recebidos. Atribua os serviços à sua equipe."
-                      : "Adicione itens do catálogo e atribua os serviços à sua equipe."}
+                    Adicione itens do catálogo, cadastre um novo item manualmente ou importe pelo Sky Peças e Tempario. Atribua os serviços à sua equipe.
                   </p>
                   {!locked && (
                     <div className="item-picker">
@@ -617,7 +615,6 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                         )}
                         value={pick}
                         onChange={setPick}
-                        extensionOnly={data.catalog_mode === "extension"}
                       />
                       <button
                         className="button primary"
@@ -630,7 +627,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                       </button>
                     </div>
                   )}
-                  {!locked && data.catalog_mode !== "extension" && (
+                  {!locked && (
                     <button
                       type="button"
                       className="text-button"
