@@ -86,6 +86,8 @@ const connect = {
     number: 123,
     orderId: "o",
     plate: "ABC1D23",
+    freight_total: 1750,
+    batch_id: "11111111-1111-4111-8111-111111111111",
   },
 };
 test("Sky, Tempario and the popup receive the active plate without credentials", async () => {
@@ -120,6 +122,25 @@ test("Sky, Tempario and the popup receive the active plate without credentials",
   assert.equal(expired.plate, undefined);
   assert.equal((await w.send({ type: "HP_OPEN_TEMPARIO" }, popup)).ok, false);
 });
+test("Sky can change purchase freight during an active connection", async () => {
+  const w = worker();
+  await w.send(connect, app);
+  assert.equal((await w.send({ type: "HP_STATUS" }, sky)).freightTotal, 1750);
+  const changed = await w.send(
+    { type: "HP_SET_FREIGHT", freight_total: 2500 },
+    sky,
+  );
+  assert.equal(changed.ok, true);
+  assert.equal(changed.freight_total, 2500);
+  assert.equal((await w.send({ type: "HP_STATUS" }, sky)).freightTotal, 2500);
+  const call = w.calls.find((x) => x.url.endsWith("/api/extension/freight"));
+  assert.ok(call);
+  assert.equal(JSON.parse(call.body).freight_total, 2500);
+  assert.equal(call.credentials, "omit");
+  assert.equal(changed.token, undefined);
+  assert.equal(changed.origin, undefined);
+});
+
 test("reconnection updates the plate and popup opens Tempario without data in its URL", async () => {
   const w = worker();
   await w.send(connect, app);
