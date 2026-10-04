@@ -141,11 +141,35 @@ export function CapturePanel({
       editingCapture.current = null;
     }
   }
+  async function syncStagedItemsBeforeComplete() {
+    if (catalog) return;
+    for (const item of [...stagedItems]) {
+      const patch =
+        item.capture_source === "sky"
+          ? { quantity: Math.max(0, Math.round(Number(item.quantity || 0))) }
+          : {
+              duration_seconds: Math.max(
+                60,
+                Math.round(Number(item.duration_seconds || 60)),
+              ),
+            };
+      await send(
+        `/orders/${targetId}/capture-items/${item.capture_receipt || item.id}`,
+        patch,
+        "PATCH",
+      );
+    }
+  }
   async function complete() {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
+      if (!catalog && source === "sky" && connected)
+        await extensionMessage("HP_SET_FREIGHT", {
+          freight_total: freight,
+        });
+      await syncStagedItemsBeforeComplete();
       const state = await send(
         catalog
           ? `/catalog-capture/${targetId}/end`
