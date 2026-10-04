@@ -445,9 +445,9 @@ export function CapturePanel({
           ))}
         </div>
         <p className="muted">
-          O custo do Sky e o preço sugerido pela configuração de lucro ficam
-          salvos no catálogo. Confira os valores antes de vender. A
-          disponibilidade do fornecedor não representa o estoque da oficina.
+          {source === "sky"
+            ? "O custo do Sky, o frete rateado e o preço sugerido ficam prontos para revisão antes da conclusão. A disponibilidade do fornecedor não representa o estoque da oficina."
+            : "No Tempario, a quantidade permanece 1. Ao ajustar o tempo, o valor do serviço acompanha proporcionalmente a relação valor/tempo capturada."}
         </p>
       </div>
       <div className="modal-footer">
