@@ -99,7 +99,11 @@ export async function listChecklists(db: DB, ctx: Context) {
     .all(ctx.tenantId);
 }
 
-export async function getChecklist(db: DB, ctx: Context, checklistId: string) {
+export async function getChecklist(
+  db: DB,
+  ctx: Context,
+  checklistId: string,
+): Promise<Record<string, any>> {
   requireAdmin(ctx);
   const value = await row(db, ctx, checklistId);
   return {
