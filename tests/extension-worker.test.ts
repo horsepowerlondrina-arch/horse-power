@@ -7,6 +7,7 @@ function worker() {
   let listener: any;
   let fail = false;
   const calls: any[] = [];
+  const tabs: any[] = [];
   const area = () => {
     const data: Record<string, any> = {};
     return {
@@ -32,7 +33,12 @@ function worker() {
       onMessage: { addListener: (f: any) => (listener = f) },
     },
     action: { async setBadgeText() {}, async setBadgeBackgroundColor() {} },
-    tabs: { async update() {}, async create() {} },
+    tabs: {
+      async update() {},
+      async create(tab: any) {
+        tabs.push(tab);
+      },
+    },
   };
   runInNewContext(readFileSync("extension/horse-power/background.js", "utf8"), {
     chrome,
@@ -48,7 +54,14 @@ function worker() {
   });
   const send = (msg: any, sender: any) =>
     new Promise<any>((resolve) => listener(msg, sender, resolve));
-  return { send, local, session, calls, setFail: (v: boolean) => (fail = v) };
+  return {
+    send,
+    local,
+    session,
+    calls,
+    tabs,
+    setFail: (v: boolean) => (fail = v),
+  };
 }
 const app = {
   url: "https://horse-power.vercel.app/ordens/o/editar",
@@ -61,10 +74,75 @@ const sky = {
   tab: { id: 2 },
 };
 const popup = { url: "chrome-extension://" + "a".repeat(32) + "/popup.html" };
+const tempario = {
+  url: "https://sistema.tempar.io/time-search",
+  frameId: 0,
+  tab: { id: 3 },
+};
 const connect = {
   type: "HP_CONNECT",
-  target: { token: "a".repeat(64), number: 123, orderId: "o" },
+  target: {
+    token: "a".repeat(64),
+    number: 123,
+    orderId: "o",
+    plate: "ABC1D23",
+  },
 };
+test("only Tempario and the popup receive the active plate without credentials", async () => {
+  const w = worker();
+  await w.send(connect, app);
+  const vehicle = await w.send({ type: "HP_VEHICLE" }, tempario);
+  assert.equal(vehicle.plate, "ABC1D23");
+  assert.equal(vehicle.number, 123);
+  assert.equal(vehicle.connected, true);
+  assert.ok(vehicle.connectionId);
+  assert.ok(vehicle.expires > Date.now());
+  assert.equal(vehicle.token, undefined);
+  assert.equal(vehicle.origin, undefined);
+  assert.equal((await w.send({ type: "HP_STATUS" }, sky)).plate, undefined);
+  for (const sender of [
+    sky,
+    app,
+    { ...tempario, frameId: 1 },
+    { ...tempario, url: "https://evil.example" },
+  ])
+    assert.equal((await w.send({ type: "HP_VEHICLE" }, sender)).ok, false);
+  assert.equal((await w.send({ type: "HP_VEHICLE" }, popup)).plate, "ABC1D23");
+  assert.equal(w.local.data.plate, undefined);
+  w.session.data.target.expires = Date.now() - 1;
+  const expired = await w.send({ type: "HP_VEHICLE" }, tempario);
+  assert.equal(expired.connected, false);
+  assert.equal(expired.plate, undefined);
+  assert.equal((await w.send({ type: "HP_OPEN_TEMPARIO" }, popup)).ok, false);
+});
+test("reconnection updates the plate and popup opens Tempario without data in its URL", async () => {
+  const w = worker();
+  await w.send(connect, app);
+  const old = await w.send({ type: "HP_VEHICLE" }, tempario);
+  await w.send(
+    { ...connect, target: { ...connect.target, plate: "DEF2345" } },
+    app,
+  );
+  const current = await w.send({ type: "HP_VEHICLE" }, tempario);
+  assert.equal(current.plate, "DEF2345");
+  assert.notEqual(current.connectionId, old.connectionId);
+  assert.equal((await w.send({ type: "HP_OPEN_TEMPARIO" }, popup)).ok, true);
+  assert.equal(w.tabs[0].url, "https://sistema.tempar.io/");
+  assert.equal(
+    (await w.send({ type: "HP_OPEN_TEMPARIO" }, tempario)).ok,
+    false,
+  );
+  await w.send({ type: "HP_DISCONNECT", orderId: "o" }, app);
+  assert.equal(
+    (await w.send({ type: "HP_VEHICLE" }, tempario)).plate,
+    undefined,
+  );
+  await w.send(
+    { ...connect, target: { ...connect.target, plate: "SEM PLACA" } },
+    app,
+  );
+  assert.equal((await w.send({ type: "HP_VEHICLE" }, tempario)).plate, "");
+});
 test("worker only accepts app pairing, keeps token away from status, and sends captures to authenticated destination", async () => {
   const w = worker();
   assert.equal((await w.send(connect, sky)).ok, false);

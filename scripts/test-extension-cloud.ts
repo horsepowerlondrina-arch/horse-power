@@ -37,6 +37,7 @@ try {
     )
     .run(order, tenant);
   const target = await beginCapture(db, ctx, order, sessionToken);
+  assert.equal(target.plate, "");
   const service = {
     capture_id: randomUUID(),
     source: "tempario",
@@ -69,6 +70,9 @@ try {
   assert.equal(state.total, 42345);
   // Verify published authenticated endpoints using only an isolated test tenant.
   if (process.env.VERIFY_ORIGIN) {
+    await db
+      .prepare("UPDATE orders SET guest_plate=? WHERE id=? AND tenant_id=?")
+      .run("abc-1d23", order, tenant);
     const base = process.env.VERIFY_ORIGIN,
       headers = {
         Cookie: `hp_session=${sessionToken}`,
@@ -80,7 +84,8 @@ try {
       { method: "POST", headers, body: "{}" },
     );
     assert.equal(start.status, 200, await start.clone().text());
-    const { token } = await start.json();
+    const { token, plate } = await start.json();
+    assert.equal(plate, "ABC1D23");
     const r = await fetch(base + "/api/extension/import", {
       method: "POST",
       headers: {

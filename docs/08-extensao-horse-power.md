@@ -10,6 +10,14 @@ O botão HP • Enviar em cada fornecedor envia somente o item selecionado. O wo
 
 O token fica em `chrome.storage.session` acessível apenas aos contextos confiáveis da extensão. A fila persistente contém os itens e destino, sem token. Reenvios conservam o identificador de captura. Pendentes não podem migrar para outro orçamento e podem ser reenviados após reconectar o destino original. As gravações do worker são serializadas.
 
+## Placa automática · versão 1.1
+
+A conexão inclui a placa normalizada do veículo cadastrado; sem vínculo, usa a placa avulsa do orçamento. Placas ausentes ou inválidas não são enviadas. O worker mantém a placa apenas na sessão e a fornece pelo comando `HP_VEHICLE`, limitado à página principal do Tempario e ao popup da própria extensão. O status genérico, acessível ao Sky, não inclui placa nem credencial.
+
+O adaptador aguarda o campo visível e editável de placa, inclusive após login ou navegação interna. Em 03/10/2026, o formulário autenticado observado tinha um input `name="plate"`, label `Placa`, placeholder `Buscar por um veículo` e botão `Buscar`. O preenchimento usa o setter nativo e eventos input/change para atualizar o formulário React. Não clica em Buscar nem consulta APIs de placa.
+
+Há atualização de contexto ao retornar à aba e a cada 2,5 segundos. Cada campo é preenchido uma vez por conexão/placa. Edições manuais são preservadas, com a ação explícita Preencher placa para reaplicar. Campos ambíguos, ocultos, desabilitados e telas de login não são preenchidos. Conexões expiradas ou encerradas deixam de fornecer a placa. O popup permite abrir o Tempario sem incluir placa ou token na URL. Se alterar o veículo no orçamento, encerre a captura e conecte novamente para usar os dados salvos.
+
 ## Dados
 
 - `capture_sessions`: tokens com hash e escopo de escrita limitado.
@@ -26,5 +34,9 @@ A página pública mantém sua lista explícita de campos, sem custos, fontes ou
 ## Verificação
 
 `npm test` cobre importação, normalização, preços, duplicações, concorrência, veículo divergente, papel de mecânico, escopo, expiração por logout, parsing de minutos e fila/reenvios do worker. `scripts/test-extension-cloud.ts` usa uma oficina temporária e remove seus dados ao final. `VERIFY_ORIGIN` inclui chamadas HTTP ao ambiente publicado. Nenhuma consulta paga de placa é utilizada.
+
+Os testes de placa cobrem vínculo ao veículo cadastrado, placa avulsa, normalização, valores inválidos, atualização na reconexão, expiração, origem/frame autorizados e ausência da placa em status/URL.
+
+Verificação no navegador em formulário React com os atributos observados no Tempario: montagem tardia do campo, reconhecimento da placa pelo estado do formulário, preservação da edição manual, reaplicação pelo botão, troca de conexão e desconexão. O contador de consultas permaneceu em zero. O adaptador instalado na página autenticada do fornecedor ainda precisa ser confirmado após atualizar a extensão.
 
 A instalação no Chrome e a captura visual nas versões atuais de Sky Peças e Tempario precisam ser confirmadas no navegador onde o usuário acessa os fornecedores.

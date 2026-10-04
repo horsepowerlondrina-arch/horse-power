@@ -62,6 +62,12 @@ export async function beginCapture(
     const order = await scoped(db, "orders", ctx.tenantId, orderId);
     if (order.kind !== "quote" || order.status !== "quote")
       throw new Error("A captura está disponível em orçamentos em elaboração.");
+    const vehicle = order.vehicle_id
+      ? await scoped(db, "vehicles", ctx.tenantId, order.vehicle_id)
+      : null;
+    const plate = String(vehicle?.plate || order.guest_plate || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
     const token = randomBytes(32).toString("hex");
     await db
       .prepare(
@@ -83,7 +89,7 @@ export async function beginCapture(
     return {
       token,
       number: order.number,
-      plate: order.guest_plate || "",
+      plate: /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(plate) ? plate : "",
       expires_minutes: 30,
     };
   });

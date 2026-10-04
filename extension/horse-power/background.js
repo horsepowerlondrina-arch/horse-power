@@ -63,6 +63,9 @@ async function handle(msg, sender) {
       token: msg.target.token,
       number: msg.target.number,
       orderId: msg.target.orderId,
+      plate: /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(msg.target.plate)
+        ? msg.target.plate
+        : "",
       origin,
       tabId: sender.tab.id,
       connectionId: crypto.randomUUID(),
@@ -81,7 +84,33 @@ async function handle(msg, sender) {
       connected: !!target && target.expires > Date.now(),
       number: target?.number,
       pending: pending.length,
+      plateAutofill: true,
     };
+  }
+  if (
+    msg.type === "HP_VEHICLE" &&
+    (isPopup || (sources[origin] === "tempario" && sender.frameId === 0))
+  ) {
+    const { target } = await chrome.storage.session.get("target");
+    if (!target || target.expires <= Date.now())
+      return { ok: true, connected: false };
+    return {
+      ok: true,
+      connected: true,
+      number: target.number,
+      plate: target.plate || "",
+      connectionId: target.connectionId,
+      expires: target.expires,
+    };
+  }
+  if (msg.type === "HP_OPEN_TEMPARIO" && isPopup) {
+    const { target } = await chrome.storage.session.get("target");
+    if (!target || target.expires <= Date.now())
+      throw new Error(
+        "Conecte a extensão no orçamento antes de abrir o Tempario.",
+      );
+    await chrome.tabs.create({ url: "https://sistema.tempar.io/" });
+    return { ok: true };
   }
   if (msg.type === "HP_DISCONNECT" && (isApp || isPopup)) {
     const { target } = await chrome.storage.session.get("target");

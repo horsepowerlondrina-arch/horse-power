@@ -5,6 +5,13 @@ async function send(type) {
 }
 async function load() {
   const s = await send("HP_STATUS");
+  const vehicle = await send("HP_VEHICLE");
+  document.getElementById("plate").textContent = vehicle.connected
+    ? vehicle.plate
+      ? "Placa do orçamento: " + vehicle.plate
+      : "Este orçamento ainda não tem uma placa válida."
+    : "";
+  document.getElementById("tempario").disabled = !vehicle.connected;
   document.getElementById("status").textContent =
     (s.connected
       ? "Conectado ao orçamento #" + s.number
@@ -15,6 +22,7 @@ async function load() {
 }
 for (const [id, type] of [
   ["open", "HP_OPEN"],
+  ["tempario", "HP_OPEN_TEMPARIO"],
   ["retry", "HP_RETRY"],
   ["clear", "HP_CLEAR_PENDING"],
 ])
@@ -32,4 +40,4 @@ for (const [id, type] of [
       document.getElementById("error").textContent = e.message;
     }
   };
-load();
+load().catch((e) => (document.getElementById("error").textContent = e.message));

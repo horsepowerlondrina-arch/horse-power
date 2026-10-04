@@ -42,6 +42,33 @@ const product = () => ({
   cost: 10000,
   quantity: 2,
 });
+test("capture connection uses the registered vehicle or a normalized guest plate", async () => {
+  const db = fixture();
+  try {
+    assert.equal(
+      (await beginCapture(db, ctx, "o", "session")).plate,
+      "ABC1D23",
+    );
+    db.exec("UPDATE orders SET guest_plate='abc-1234' WHERE id='o'");
+    assert.equal(
+      (await beginCapture(db, ctx, "o", "session")).plate,
+      "ABC1234",
+    );
+    db.exec(`INSERT INTO customers(id,tenant_id,name) VALUES('customer','a','Cliente');
+      INSERT INTO vehicles(id,tenant_id,customer_id,plate,brand,model,year) VALUES('vehicle','a','customer','def-2a34','Fiat','Uno',2020);
+      UPDATE orders SET customer_id='customer',vehicle_id='vehicle' WHERE id='o';`);
+    assert.equal(
+      (await beginCapture(db, ctx, "o", "session")).plate,
+      "DEF2A34",
+    );
+    db.exec(
+      "UPDATE orders SET vehicle_id=NULL,guest_plate='SEM PLACA' WHERE id='o'",
+    );
+    assert.equal((await beginCapture(db, ctx, "o", "session")).plate, "");
+  } finally {
+    db.close();
+  }
+});
 test("capture saves quote, catalog and vehicle-specific times atomically; retries and duplicate clicks do not duplicate", async () => {
   const db = fixture();
   try {

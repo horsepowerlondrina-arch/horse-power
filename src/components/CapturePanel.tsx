@@ -18,6 +18,8 @@ export function CapturePanel({
   const [items, setItems] = useState<Entity[]>([]),
     [number, setNumber] = useState<number>();
   const [expires, setExpires] = useState(0);
+  const [plate, setPlate] = useState("");
+  const [plateAutofill, setPlateAutofill] = useState(false);
   useEffect(() => {
     let current = true;
     async function load() {
@@ -39,10 +41,12 @@ export function CapturePanel({
     setBusy(true);
     setError("");
     try {
-      await extensionMessage("HP_STATUS");
+      const extension = await extensionMessage("HP_STATUS");
       const target = await send(`/orders/${orderId}/capture-session`, {});
       await extensionMessage("HP_CONNECT", { target: { ...target, orderId } });
       setNumber(target.number);
+      setPlate(target.plate);
+      setPlateAutofill(extension.plateAutofill === true);
       setExpires(Date.now() + target.expires_minutes * 60000);
       setConnected(true);
     } catch (e) {
@@ -118,6 +122,27 @@ export function CapturePanel({
             </a>
           )}
         </div>
+        {connected && source === "tempario" && (
+          <p className="muted">
+            {!plateAutofill ? (
+              <>
+                Para enviar a placa automaticamente,{" "}
+                <a href="/downloads/horse-power-conector.zip" download>
+                  atualize a extensão
+                </a>{" "}
+                e recarregue as páginas.
+              </>
+            ) : plate ? (
+              <>
+                Placa <strong>{plate}</strong>: será preenchida automaticamente
+                no Tempario, inclusive se a aba já estiver aberta. Depois,
+                clique em consultar no Tempario.
+              </>
+            ) : (
+              "Este orçamento ainda não tem uma placa válida. Conclua a captura, informe o veículo no orçamento e abra novamente para enviar a placa."
+            )}
+          </p>
+        )}
         {!connected && (
           <details>
             <summary>Como instalar a extensão</summary>
