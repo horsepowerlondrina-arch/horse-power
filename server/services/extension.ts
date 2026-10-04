@@ -191,7 +191,7 @@ export async function beginCapture(
   orderId: string,
   sessionToken: string,
   freightTotal = 1750,
-  batchId = randomUUID(),
+  batchId: string = randomUUID(),
 ) {
   requireAdmin(ctx);
   freightTotal = z.number().int().min(0).max(100000000).parse(freightTotal);
@@ -763,7 +763,7 @@ export async function beginCatalogCapture(
   target: string,
   sessionToken: string,
   freightTotal = 1750,
-  batchId = randomUUID(),
+  batchId: string = randomUUID(),
 ) {
   requireAdmin(ctx);
   freightTotal = z.number().int().min(0).max(100000000).parse(freightTotal);
