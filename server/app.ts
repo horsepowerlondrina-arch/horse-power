@@ -9,6 +9,7 @@ import {
   catalogCaptureState,
   captureState,
   discardCapture,
+  discardExtensionCapture,
   finishCapture,
   importCapture,
   updateCaptureFreight,
@@ -282,6 +283,10 @@ export function createApp(db: DB) {
       return;
     }
     res.json(result);
+  });
+  app.post("/api/extension/discard", async (req, res) => {
+    const token = req.headers.authorization?.replace(/^Bearer /, "") || "";
+    res.json(await discardExtensionCapture(db, token));
   });
   app.post("/api/extension/import", async (req, res) => {
     const token = req.headers.authorization?.replace(/^Bearer /, "") || "";

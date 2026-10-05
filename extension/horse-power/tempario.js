@@ -301,6 +301,7 @@
       d.innerHTML =
         '<strong>Horse Power</strong><span id="hp-tempario-count">0 serviço(s)</span><button>Abrir Horse Power</button>';
       d.querySelector("button").onclick = () => window.hpOpenQuote();
+      window.hpMinimizePanel(d);
       document.body.appendChild(d);
     }
     updateFloat();

@@ -30,7 +30,7 @@ for (const [id, type] of [
     try {
       if (
         id === "clear" &&
-        !confirm("Descartar os itens que ainda não foram enviados?")
+        !confirm("Descartar os itens pendentes e em espera e desconectar deste destino?")
       )
         return;
       document.getElementById("error").textContent = "";

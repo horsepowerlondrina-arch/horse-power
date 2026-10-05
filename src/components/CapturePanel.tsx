@@ -39,6 +39,9 @@ export function CapturePanel({
     async function load() {
       try {
         const r = await api(stateUrl);
+        const status = await extensionMessage("HP_STATUS").catch(() => null);
+        if (current && status && (!status.connected || typeof status.orderId === "string"))
+          setConnected(status.connected && status.orderId === targetId);
         if (current) {
           setItems(r.items);
           if (!editingCapture.current)
@@ -117,6 +120,7 @@ export function CapturePanel({
   async function disconnect() {
     try {
       await extensionMessage("HP_DISCONNECT", { orderId: targetId });
+      setConnected(false);
     } catch {
       /* The server may already have revoked the scoped connection. */
     }
@@ -291,7 +295,7 @@ export function CapturePanel({
             {!plateAutofill ? (
               <>
                 Para enviar a placa automaticamente,{" "}
-                <a href="/downloads/horse-power-conector.zip" download>
+                <a href="/downloads/horse-power-conector.zip?v=1.3.3" download>
                   atualize a extensão
                 </a>{" "}
                 e recarregue as páginas.
@@ -312,7 +316,7 @@ export function CapturePanel({
             <summary>Como instalar a extensão</summary>
             <ol>
               <li>
-                <a href="/downloads/horse-power-conector.zip" download>
+                <a href="/downloads/horse-power-conector.zip?v=1.3.3" download>
                   Baixe o Conector Horse Power
                 </a>{" "}
                 e extraia o ZIP.

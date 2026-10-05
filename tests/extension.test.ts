@@ -6,6 +6,7 @@ import {
   beginCapture,
   captureState,
   discardCapture,
+  discardExtensionCapture,
   importCapture,
   finishCapture,
   suggestedPrice,
@@ -107,7 +108,7 @@ test("Sky freight defaults to one purchase total and is redistributed proportion
         .prepare(
           "SELECT source_cost,freight_total FROM external_captures WHERE source='sky' ORDER BY source_cost",
         )
-        .all(),
+        .all().map((row) => ({ ...row })),
       [
         { source_cost: 10000, freight_total: 438 },
         { source_cost: 30000, freight_total: 1312 },
@@ -129,7 +130,7 @@ test("Sky freight defaults to one purchase total and is redistributed proportion
         .prepare(
           "SELECT source_cost,freight_total FROM external_captures WHERE source='sky' ORDER BY source_cost",
         )
-        .all(),
+        .all().map((row) => ({ ...row })),
       [
         { source_cost: 10000, freight_total: 500 },
         { source_cost: 30000, freight_total: 1500 },
@@ -427,4 +428,17 @@ test("original part markup is rounded in cents", () => {
   assert.equal(suggestedPrice(500), 1300);
   assert.equal(suggestedPrice(10000), 15000);
   assert.equal(suggestedPrice(15001), 21751);
+});
+
+test("extension discard removes staged captures and revokes bearer token", async () => {
+  const db = fixture();
+  try {
+    const target = await beginCapture(db, ctx, "o", "session");
+    await importCapture(db, target.token, product());
+    assert.equal((await captureState(db, ctx, "o")).staged_items.length, 1);
+    await discardExtensionCapture(db, target.token);
+    assert.equal((await captureState(db, ctx, "o")).staged_items.length, 0);
+    await assert.rejects(() => importCapture(db, target.token, product()), /expirada/);
+    await assert.rejects(() => discardExtensionCapture(db, "invalid"), /Conecte/);
+  } finally { db.close(); }
 });

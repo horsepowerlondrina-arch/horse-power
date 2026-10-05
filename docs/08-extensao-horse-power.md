@@ -69,3 +69,7 @@ Nas capturas destinadas a orçamento ou OS, itens do Sky Peças e do Tempario fi
 - Alterações digitadas e ainda focadas no campo são sincronizadas antes da conclusão, evitando gravar quantidade ou tempo anterior.
 
 A captura direta para o catálogo continua com o comportamento próprio de cadastro, pois não existe OS/orçamento a confirmar nesse fluxo.
+
+### Versão 1.3.3
+
+Minimizar/Restaurar recolhe apenas o painel, mantendo captura, placa e frete. Descartar pendentes revoga a sessão no servidor, descarta os itens em espera e desconecta o destino. Se houver falha de rede, tente novamente; a fila é preservada até confirmar o descarte.

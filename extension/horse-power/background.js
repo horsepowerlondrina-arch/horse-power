@@ -117,6 +117,7 @@ async function handle(msg, sender) {
     return {
       ok: true,
       connected: !!target && target.expires > Date.now(),
+      orderId: isApp ? target?.orderId : undefined,
       number: target?.number,
       pending: pending.length,
       plateAutofill: true,
@@ -233,7 +234,22 @@ async function handle(msg, sender) {
     return { ok: true };
   }
   if (msg.type === "HP_CLEAR_PENDING" && isPopup) {
+    const { target } = await chrome.storage.session.get("target");
+    if (target) {
+      const response = await fetch(target.origin + "/api/extension/discard", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + target.token },
+        credentials: "omit",
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok && response.status !== 401) {
+        const body = await response.json();
+        throw new Error(body.error || "Não foi possível descartar. Tente novamente.");
+      }
+    }
     await chrome.storage.local.set({ pending: [] });
+    await chrome.storage.session.remove("target");
+    await chrome.action.setBadgeText({ text: "" });
     return { ok: true };
   }
   if (msg.type === "HP_OPEN" && (isPopup || sources[origin])) {

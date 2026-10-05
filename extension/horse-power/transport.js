@@ -29,3 +29,21 @@ window.hpSetFreight = async (freightTotal) => {
   return response;
 };
 window.hpOpenQuote = () => chrome.runtime.sendMessage({ type: "HP_OPEN" });
+
+window.hpMinimizePanel = (panel) => {
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "hp-panel-toggle";
+  const render = () => {
+    const minimized = panel.classList.contains("hp-minimized");
+    toggle.textContent = minimized ? "Restaurar" : "Minimizar";
+    toggle.setAttribute("aria-label", minimized ? "Restaurar painel Horse Power" : "Minimizar painel Horse Power");
+    toggle.setAttribute("aria-expanded", String(!minimized));
+  };
+  toggle.onclick = () => {
+    panel.classList.toggle("hp-minimized");
+    render();
+  };
+  render();
+  panel.appendChild(toggle);
+};

@@ -332,3 +332,48 @@ test("catalog destinations advertise capability and cannot receive pending order
   assert.equal((await w.send({ type: "HP_RETRY" }, popup)).ok, false);
   assert.equal(w.calls.length, count);
 });
+
+test("discard pending revokes the original target, disconnects and permits another quote", async () => {
+  const w = worker();
+  await w.send(connect, app);
+  w.setFail(true);
+  await w.send({ type: "HP_CAPTURE", item: { capture_id: randomUUID(), name: "Peça" } }, sky);
+  assert.equal((await w.send({ type: "HP_CLEAR_PENDING" }, sky)).ok, false);
+  assert.equal((await w.send({ type: "HP_CLEAR_PENDING" }, popup)).ok, false);
+  assert.equal(w.local.data.pending.length, 1);
+  w.setFail(false);
+  assert.equal((await w.send({ type: "HP_CLEAR_PENDING" }, popup)).ok, true);
+  assert.ok(w.calls.at(-1).url.endsWith("/api/extension/discard"));
+  assert.equal(w.calls.at(-1).headers.Authorization, "Bearer " + connect.target.token);
+  assert.equal(w.local.data.pending.length, 0);
+  assert.equal(w.session.data.target, undefined);
+  for (const sender of [sky, tempario, popup]) {
+    assert.equal((await w.send({ type: "HP_STATUS" }, sender)).connected, false);
+    assert.equal((await w.send({ type: "HP_VEHICLE" }, sender)).connected, false);
+  }
+  assert.equal((await w.send({ ...connect, target: { ...connect.target, orderId: "next" } }, app)).ok, true);
+});
+
+test("minimizing and restoring panels preserves content and sends no connection messages", () => {
+  const buttons: any[] = [];
+  const window: any = {};
+  runInNewContext(readFileSync("extension/horse-power/transport.js", "utf8"), {
+    window, chrome: {}, document: { createElement: () => { const b = { setAttribute() {} }; buttons.push(b); return b; } },
+  });
+  for (const source of ["sky", "tempario"]) {
+    let minimized = false;
+    const children: any[] = [{ freight: 1750, plate: "ABC1D23" }];
+    const panel = { classList: { contains: () => minimized, toggle: () => { minimized = !minimized; } }, appendChild: (b: any) => children.push(b) };
+    window.hpMinimizePanel(panel);
+    const b = buttons.at(-1);
+    assert.equal(b.textContent, "Minimizar");
+    b.onclick();
+    assert.equal(minimized, true);
+    assert.equal(b.textContent, "Restaurar");
+    b.onclick();
+    assert.equal(minimized, false);
+    assert.equal(children[0].freight, 1750);
+    assert.equal(children[0].plate, "ABC1D23");
+    assert.ok(readFileSync(`extension/horse-power/${source}.js`, "utf8").includes("window.hpMinimizePanel(d)"));
+  }
+});

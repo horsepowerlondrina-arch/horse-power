@@ -836,3 +836,15 @@ export async function catalogCaptureState(
     };
   });
 }
+
+export async function discardExtensionCapture(db: DB, token: string) {
+  return transaction(db, async () => {
+    const session = await activeCaptureSession(db, token);
+    if (session.order_id) {
+      await discardCapture(db, { tenantId: session.tenant_id, userId: session.user_id, role: "owner" }, session.order_id);
+    } else {
+      await db.prepare("DELETE FROM capture_sessions WHERE token_hash=?").run(digest(token));
+    }
+    return { ok: true };
+  });
+}

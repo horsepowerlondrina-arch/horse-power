@@ -690,14 +690,14 @@ export function Settings() {
             </section>
             <section className="panel settings-card">
               <Download size={23} />
-              <h2>Conector Horse Power 1.3.2</h2>
+              <h2>Conector Horse Power 1.3.3</h2>
               <p>
                 Envie peças do Sky e serviços do Tempario ao catálogo, orçamento
-                ou OS. Inclui envio da placa e frete total editável no Sky Peças.
+                ou OS. Inclui painel minimizável, envio da placa, frete editável e desconexão ao descartar pendentes.
               </p>
               <a
                 className="button primary"
-                href="/downloads/horse-power-conector.zip?v=1.3.2"
+                href="/downloads/horse-power-conector.zip?v=1.3.3"
                 download
               >
                 <Download size={16} />

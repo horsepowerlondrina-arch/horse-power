@@ -174,3 +174,6 @@
 #hp-tempario-toast.show {
   opacity: 1;
 }
+
+#hp-sky-float.hp-minimized > :not(strong):not(.hp-panel-toggle),
+#hp-tempario-float.hp-minimized > :not(strong):not(.hp-panel-toggle) { display: none !important; }

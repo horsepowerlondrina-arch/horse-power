@@ -243,6 +243,7 @@
       });
       freight.append(title, input);
       d.appendChild(freight);
+      window.hpMinimizePanel(d);
       document.body.appendChild(d);
     }
     updateFloat();
