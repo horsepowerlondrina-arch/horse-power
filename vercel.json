@@ -22,7 +22,11 @@
       "destination": "/api"
     },
     {
-      "source": "/((?!api/|assets/|brand/|downloads/|favicon).*)",
+      "source": "/privacidade",
+      "destination": "/privacidade.html"
+    },
+    {
+      "source": "/((?!api/|assets/|brand/|downloads/|favicon|privacidade\\.html$).*)",
       "destination": "/index.html"
     }
   ],
