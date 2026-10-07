@@ -16,6 +16,7 @@ import {
   Package,
   ArrowRight,
   Save,
+  Pencil,
 } from "lucide-react";
 import { useApp } from "../lib/context";
 import { send } from "../lib/api";
@@ -98,6 +99,10 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
   const [quickCreate, setQuickCreate] = useState<
     "customers" | "vehicles" | "catalog" | null
   >(null);
+  const [editingProduct, setEditingProduct] = useState<{
+    itemId: string;
+    record: Entity;
+  } | null>(null);
   const locked = order && ["completed", "cancelled"].includes(order.status);
   const set = (key: string, value: any) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -113,12 +118,12 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     if (discountMode !== "percent") return;
     const discount = Math.min(
       subtotal,
-      Math.round((subtotal * Math.max(0, Math.min(100, discountPercent))) / 100),
+      Math.round(
+        (subtotal * Math.max(0, Math.min(100, discountPercent))) / 100,
+      ),
     );
     setForm((current) =>
-      current.discount === discount
-        ? current
-        : { ...current, discount },
+      current.discount === discount ? current : { ...current, discount },
     );
   }, [discountMode, discountPercent, subtotal]);
   const customer = data.customers.find((c) => c.id === form.customer_id);
@@ -243,7 +248,11 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     ["open", "OS aberta", "Deixar a OS aberta, antes do início da execução."],
     ["working", "Em execução", "Retomar ou colocar a OS em execução."],
     ["ready", "Pronta para entrega", "Marcar a OS como pronta para entrega."],
-    ["completed", "Finalizada", "Finalizar a OS, baixar estoque e gerar cobrança."],
+    [
+      "completed",
+      "Finalizada",
+      "Finalizar a OS, baixar estoque e gerar cobrança.",
+    ],
     ["cancelled", "Cancelada", "Cancelar o atendimento mantendo o histórico."],
   ] as const;
   return (
@@ -658,7 +667,40 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                                       ? ` · ${Math.round(item.duration_seconds / 60)} min`
                                       : ""}
                                   </small>
+                                  {admin && item.kind === "product" && (
+                                    <small>
+                                      Custo neste atendimento:{" "}
+                                      {money(item.cost || 0)} por unidade
+                                    </small>
+                                  )}
                                 </div>
+                                {admin &&
+                                  !locked &&
+                                  item.kind === "product" && (
+                                    <button
+                                      type="button"
+                                      className="button item-edit-catalog"
+                                      disabled={
+                                        !data.catalog.some(
+                                          (c) => c.id === item.catalog_id,
+                                        )
+                                      }
+                                      onClick={() => {
+                                        const record = data.catalog.find(
+                                          (c) => c.id === item.catalog_id,
+                                        );
+                                        if (record)
+                                          setEditingProduct({
+                                            itemId: item.id,
+                                            record,
+                                          });
+                                      }}
+                                      aria-label={`Editar cadastro e custo de ${item.name}`}
+                                    >
+                                      <Pencil size={15} /> Editar cadastro /
+                                      custo
+                                    </button>
+                                  )}
                                 {!locked && (
                                   <button
                                     type="button"
@@ -820,9 +862,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
             </Field>
             <Field
               label={
-                discountMode === "percent"
-                  ? "Desconto (%)"
-                  : "Desconto (R$)"
+                discountMode === "percent" ? "Desconto (%)" : "Desconto (R$)"
               }
             >
               <NumericInput
@@ -919,6 +959,35 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
               committed
                 ? "Captura concluída. Itens adicionados ao atendimento."
                 : "Captura descartada. Nenhum item em espera foi adicionado.",
+            );
+          }}
+        />
+      )}
+      {editingProduct && (
+        <RegisterModal
+          key={editingProduct.itemId}
+          kind="catalog"
+          record={editingProduct.record}
+          onClose={() => setEditingProduct(null)}
+          additionalFields={
+            <div className="info-box">
+              O cadastro é atualizado ao salvar este formulário. O custo com
+              frete também será aplicado a este produto ao salvar o atendimento.
+              O valor de venda deste atendimento continua sendo definido no
+              campo Valor unitário.
+            </div>
+          }
+          onSaved={(_, values) => {
+            setForm((f) => ({
+              ...f,
+              items: f.items.map((item) =>
+                item.id === editingProduct.itemId
+                  ? { ...item, cost: values.cost, cost_override: values.cost }
+                  : item,
+              ),
+            }));
+            notify(
+              "Cadastro e custo do produto atualizados. Salve o atendimento para gravar o custo corrigido.",
             );
           }}
         />

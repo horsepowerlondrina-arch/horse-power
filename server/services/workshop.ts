@@ -134,12 +134,17 @@ export async function saveOrder(
           ).active
         )
           throw new Error("Profissional inativo.");
+        if (
+          item.cost_override !== undefined &&
+          (!Number.isSafeInteger(item.cost_override) || item.cost_override < 0)
+        )
+          throw new Error("Informe um custo válido em centavos.");
         return {
           ...item,
           snapshotId: prior?.id || id(),
           kind: catalog.kind,
           name: prior?.name || catalog.name,
-          cost: prior?.cost ?? catalog.cost,
+          cost: item.cost_override ?? prior?.cost ?? catalog.cost,
           professional_id: item.professional_id || null,
         };
       }),
@@ -148,8 +153,7 @@ export async function saveOrder(
     const orderId = record || id();
     const changed =
       !!old &&
-      (
-        String(old.customer_id || "") !== String(customerId || "") ||
+      (String(old.customer_id || "") !== String(customerId || "") ||
         String(old.vehicle_id || "") !== String(vehicleId || "") ||
         String(old.guest_name || "") !== String(input.guest_name || "") ||
         String(old.guest_plate || "") !== String(input.guest_plate || "") ||
@@ -175,8 +179,7 @@ export async function saveOrder(
             Number(prior.price) !== Number(item.price) ||
             Number(prior.cost) !== Number(item.cost)
           );
-        })
-      );
+        }));
     const values = [
       customerId,
       vehicleId,
@@ -236,8 +239,7 @@ export async function saveOrder(
           item.price,
           item.cost,
         );
-    if (changed)
-      await invalidateOrderShares(db, ctx.tenantId, orderId);
+    if (changed) await invalidateOrderShares(db, ctx.tenantId, orderId);
     await audit(
       db,
       ctx,
@@ -247,15 +249,9 @@ export async function saveOrder(
     return orderId;
   });
 }
-async function reverseCompletedOrder(
-  db: DB,
-  ctx: Context,
-  order: Row,
-) {
+async function reverseCompletedOrder(db: DB, ctx: Context, order: Row) {
   const receivable = await db
-    .prepare(
-      "SELECT * FROM receivables WHERE tenant_id=? AND order_id=?",
-    )
+    .prepare("SELECT * FROM receivables WHERE tenant_id=? AND order_id=?")
     .get(ctx.tenantId, order.id);
   if (receivable) {
     const paidInstallment = await db
@@ -289,9 +285,7 @@ async function reverseCompletedOrder(
     .all(ctx.tenantId, order.id);
   for (const movement of movements)
     await db
-      .prepare(
-        "UPDATE catalog SET stock=stock+? WHERE tenant_id=? AND id=?",
-      )
+      .prepare("UPDATE catalog SET stock=stock+? WHERE tenant_id=? AND id=?")
       .run(-Number(movement.quantity), ctx.tenantId, movement.catalog_id);
   await db
     .prepare(
@@ -336,14 +330,15 @@ export async function transitionOrder(
           ctx.tenantId,
           order.customer_id,
         ),
-        vehicle = await scoped(
-          db,
-          "vehicles",
-          ctx.tenantId,
-          order.vehicle_id,
+        vehicle = await scoped(db, "vehicles", ctx.tenantId, order.vehicle_id);
+      if (
+        !customer.active ||
+        !vehicle.active ||
+        vehicle.customer_id !== customer.id
+      )
+        throw new Error(
+          "Confira o cliente e o veículo antes de alterar a situação.",
         );
-      if (!customer.active || !vehicle.active || vehicle.customer_id !== customer.id)
-        throw new Error("Confira o cliente e o veículo antes de alterar a situação.");
     }
 
     if (order.status === "completed" && status !== "completed")
@@ -357,10 +352,7 @@ export async function transitionOrder(
         throw new Error(
           "Adicione pelo menos um produto ou serviço para finalizar.",
         );
-      const products = new Map<
-        string,
-        { name: string; quantity: number }
-      >();
+      const products = new Map<string, { name: string; quantity: number }>();
       for (const item of items.filter((i) => i.kind === "product")) {
         const current = products.get(item.catalog_id);
         products.set(item.catalog_id, {

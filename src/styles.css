@@ -4408,6 +4408,11 @@ body {
   margin-top: 10px;
 }
 /* OS result reports */
+.order-item-head .item-edit-catalog { margin-left: auto; font-size: 11px; padding: 7px 10px; flex-shrink: 0; }
+@media (max-width: 640px) {
+  .order-item-head { flex-wrap: wrap; }
+  .order-item-head .item-edit-catalog { margin-left: 0; }
+}
 .orders-list-page .heading-actions { max-width: 100%; flex-wrap: wrap; }
 .orders-list-page .table-scroll { position: relative; }
 .order-report-filters { padding: 0 24px 20px; border-bottom: 1px solid var(--border); }

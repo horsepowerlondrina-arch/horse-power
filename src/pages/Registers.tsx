@@ -1,6 +1,6 @@
 import { NumericInput } from "../components/NumericInput";
 import { CapturePanel } from "../components/CapturePanel";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -437,12 +437,14 @@ export function RegisterModal({
   onClose,
   initial,
   onSaved,
+  additionalFields,
 }: {
   kind: Kind;
   record: Entity | null;
   onClose: () => void;
   initial?: Record<string, unknown>;
   onSaved?: (id: string, values: Record<string, any>) => void;
+  additionalFields?: ReactNode;
 }) {
   const { data, refresh, notify } = useApp();
   const navigate = useNavigate();
@@ -780,6 +782,7 @@ export function RegisterModal({
               </Field>
             )}
           </div>
+          {additionalFields}
           {record && ["customers", "vehicles"].includes(kind) && (
             <section className="record-history">
               <h3>Histórico de atendimentos</h3>

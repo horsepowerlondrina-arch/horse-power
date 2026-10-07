@@ -142,6 +142,7 @@ const orderSchema = z.object({
         professional_id: z.string().nullable().optional(),
         quantity: z.number().int().min(1).max(10000),
         price: integer,
+        cost_override: integer.optional(),
       }),
     )
     .max(200),

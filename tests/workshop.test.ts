@@ -225,8 +225,13 @@ test("administrador pode reabrir atendimento cancelado e editar novamente", asyn
     );
     await transitionOrder(db, ctx, record, "open");
     await saveOrder(db, ctx, input({ notes: "Reaberta" }), record);
-    const row = db.prepare("SELECT status,kind,notes FROM orders WHERE id=?").get(record)!;
-    assert.deepEqual([row.status, row.kind, row.notes], ["open", "order", "Reaberta"]);
+    const row = db
+      .prepare("SELECT status,kind,notes FROM orders WHERE id=?")
+      .get(record)!;
+    assert.deepEqual(
+      [row.status, row.kind, row.notes],
+      ["open", "order", "Reaberta"],
+    );
   } finally {
     db.close();
   }
@@ -238,7 +243,9 @@ test("OS finalizada pode voltar para execução ou orçamento desfazendo estoque
     const record = await saveOrder(db, ctx, input());
     await ready(db, record);
     await transitionOrder(db, ctx, record, "completed");
-    const receivable = db.prepare("SELECT id FROM receivables WHERE order_id=?").get(record)!;
+    const receivable = db
+      .prepare("SELECT id FROM receivables WHERE order_id=?")
+      .get(record)!;
     await configurePlan(db, ctx, String(receivable.id), {
       method: "Cartão de crédito",
       installments: 2,
@@ -248,14 +255,33 @@ test("OS finalizada pode voltar para execução ou orçamento desfazendo estoque
     });
     await transitionOrder(db, ctx, record, "working");
     assert.equal(
-      db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!.stock,
+      db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!
+        .stock,
       5,
     );
-    assert.equal(db.prepare("SELECT COUNT(*) n FROM stock_movements WHERE order_id=?").get(record)!.n, 0);
-    assert.equal(db.prepare("SELECT COUNT(*) n FROM receivables WHERE order_id=?").get(record)!.n, 0);
-    assert.equal(db.prepare("SELECT COUNT(*) n FROM payment_installments").get()!.n, 0);
-    let row = db.prepare("SELECT status,kind,completed_on FROM orders WHERE id=?").get(record)!;
-    assert.deepEqual([row.status, row.kind, row.completed_on], ["working", "order", null]);
+    assert.equal(
+      db
+        .prepare("SELECT COUNT(*) n FROM stock_movements WHERE order_id=?")
+        .get(record)!.n,
+      0,
+    );
+    assert.equal(
+      db
+        .prepare("SELECT COUNT(*) n FROM receivables WHERE order_id=?")
+        .get(record)!.n,
+      0,
+    );
+    assert.equal(
+      db.prepare("SELECT COUNT(*) n FROM payment_installments").get()!.n,
+      0,
+    );
+    let row = db
+      .prepare("SELECT status,kind,completed_on FROM orders WHERE id=?")
+      .get(record)!;
+    assert.deepEqual(
+      [row.status, row.kind, row.completed_on],
+      ["working", "order", null],
+    );
 
     await transitionOrder(db, ctx, record, "quote");
     row = db.prepare("SELECT status,kind FROM orders WHERE id=?").get(record)!;
@@ -271,7 +297,9 @@ test("OS com recebimento confirmado não pode ser reaberta", async () => {
     const record = await saveOrder(db, ctx, input());
     await ready(db, record);
     await transitionOrder(db, ctx, record, "completed");
-    const receivable = db.prepare("SELECT id FROM receivables WHERE order_id=?").get(record)!;
+    const receivable = db
+      .prepare("SELECT id FROM receivables WHERE order_id=?")
+      .get(record)!;
     await settle(db, ctx, String(receivable.id), "Pix");
     await assert.rejects(
       async () => await transitionOrder(db, ctx, record, "working"),
@@ -282,7 +310,8 @@ test("OS com recebimento confirmado não pode ser reaberta", async () => {
       "completed",
     );
     assert.equal(
-      db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!.stock,
+      db.prepare("SELECT stock FROM catalog WHERE id=?").get("a-product")!
+        .stock,
       3,
     );
   } finally {
@@ -307,6 +336,111 @@ test("snapshot de preço não muda ao alterar o catálogo", async () => {
     db.close();
   }
 });
+test("correção explícita de custo atualiza somente o atendimento escolhido e preserva preço e custos históricos", async () => {
+  const db = fixture();
+  try {
+    const os = await saveOrder(db, ctx, input());
+    const quote = await saveOrder(db, ctx, input({ status: "quote" }));
+    const historical = await saveOrder(db, ctx, input());
+    await ready(db, historical);
+    await transitionOrder(db, ctx, historical, "completed");
+    db.prepare("UPDATE catalog SET cost=6500,price=12000 WHERE id=?").run(
+      "a-product",
+    );
+    const savedItems = (orderId: string) =>
+      db.prepare("SELECT * FROM order_items WHERE order_id=?").all(orderId);
+    // Ordinary saves continue to preserve the original cost despite a catalog change.
+    await saveOrder(db, ctx, input({ items: savedItems(os) }), os);
+    assert.equal(savedItems(os)[0].cost, 4000);
+    for (const record of [os, quote]) {
+      await saveOrder(
+        db,
+        ctx,
+        input({
+          items: savedItems(record).map((item) => ({
+            ...item,
+            cost_override: 6500,
+          })),
+        }),
+        record,
+      );
+      assert.equal(savedItems(record)[0].cost, 6500);
+      assert.equal(savedItems(record)[0].price, 10000);
+      assert.equal(
+        db.prepare("SELECT total FROM orders WHERE id=?").get(record)!.total,
+        19500,
+      );
+    }
+    assert.equal(savedItems(historical)[0].cost, 4000);
+    // A corrected snapshot is preserved on subsequent ordinary saves, including a later catalog change.
+    db.prepare("UPDATE catalog SET cost=8000 WHERE id=?").run("a-product");
+    await saveOrder(db, ctx, input({ items: savedItems(os) }), os);
+    assert.equal(savedItems(os)[0].cost, 6500);
+    await saveOrder(
+      db,
+      ctx,
+      input({
+        items: savedItems(os).map((item) => ({ ...item, cost_override: 0 })),
+      }),
+      os,
+    );
+    assert.equal(savedItems(os)[0].cost, 0);
+    await assert.rejects(
+      saveOrder(
+        db,
+        ctx,
+        input({
+          items: savedItems(os).map((item) => ({ ...item, cost_override: -1 })),
+        }),
+        os,
+      ),
+      /custo válido/,
+    );
+    await assert.rejects(
+      saveOrder(
+        db,
+        { ...ctx, role: "mechanic" },
+        input({
+          items: savedItems(os).map((item) => ({
+            ...item,
+            cost_override: 9999,
+          })),
+        }),
+        os,
+      ),
+    );
+    await assert.rejects(
+      saveOrder(
+        db,
+        ctx,
+        input({
+          items: savedItems(historical).map((item) => ({
+            ...item,
+            cost_override: 9999,
+          })),
+        }),
+        historical,
+      ),
+      /não podem ser editadas/,
+    );
+    await assert.rejects(
+      saveOrder(
+        db,
+        { ...ctx, tenantId: "b" },
+        input({
+          items: savedItems(os).map((item) => ({
+            ...item,
+            cost_override: 9999,
+          })),
+        }),
+        os,
+      ),
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("dados persistem ao fechar e reabrir o banco", async () => {
   const dir = mkdtempSync(join(tmpdir(), "horse-power-test-"));
   const path = join(dir, "test.sqlite");
@@ -366,7 +500,9 @@ test("API autentica, protege oficinas, valida entrada e revoga sessão", async (
       workspace.customers.map((c: any) => c.id),
       ["a-customer"],
     );
-    db.prepare("UPDATE tenants SET catalog_mode='extension' WHERE id='a'").run();
+    db.prepare(
+      "UPDATE tenants SET catalog_mode='extension' WHERE id='a'",
+    ).run();
     const manualCatalog = await request("/catalog", "POST", {
       kind: "service",
       name: "Diagnóstico manual",
@@ -405,6 +541,44 @@ test("API autentica, protege oficinas, valida entrada e revoga sessão", async (
       (await request("/orders", "POST", input({ due_on: "2026-02-31" })))
         .status,
       400,
+    );
+    const createdCostOrder = await request("/orders", "POST", input());
+    assert.equal(createdCostOrder.status, 201);
+    const costOrderId = (await createdCostOrder.json()).id;
+    const costItems = db
+      .prepare("SELECT * FROM order_items WHERE order_id=?")
+      .all(costOrderId);
+    const correctedCost = await request(
+      `/orders/${costOrderId}`,
+      "PUT",
+      input({
+        items: costItems.map((item) => ({ ...item, cost_override: 6500 })),
+      }),
+    );
+    assert.equal(correctedCost.status, 200, await correctedCost.text());
+    assert.equal(
+      db
+        .prepare("SELECT cost FROM order_items WHERE order_id=?")
+        .get(costOrderId)!.cost,
+      6500,
+    );
+    assert.equal(
+      (
+        await request(
+          `/orders/${costOrderId}`,
+          "PUT",
+          input({
+            items: costItems.map((item) => ({ ...item, cost_override: -1 })),
+          }),
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      db
+        .prepare("SELECT cost FROM order_items WHERE order_id=?")
+        .get(costOrderId)!.cost,
+      6500,
     );
     assert.equal(
       (
@@ -826,10 +1000,15 @@ test("API cadastra cliente e veículo atomicamente e limita o mecânico à opera
 });
 
 test("produção permite login e saída nos domínios configurados e bloqueia outras origens", async () => {
-  const previous = { NODE_ENV: process.env.NODE_ENV, APP_ORIGIN: process.env.APP_ORIGIN, APP_ORIGINS: process.env.APP_ORIGINS };
+  const previous = {
+    NODE_ENV: process.env.NODE_ENV,
+    APP_ORIGIN: process.env.APP_ORIGIN,
+    APP_ORIGINS: process.env.APP_ORIGINS,
+  };
   process.env.NODE_ENV = "production";
   process.env.APP_ORIGIN = "https://horse-power.vercel.app";
-  process.env.APP_ORIGINS = "https://horse-power.vercel.app,https://oficinahorsepower.com.br";
+  process.env.APP_ORIGINS =
+    "https://horse-power.vercel.app,https://oficinahorsepower.com.br";
   const db = fixture();
   const server = createApp(db).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -837,25 +1016,50 @@ test("produção permite login e saída nos domínios configurados e bloqueia ou
   try {
     for (const origin of process.env.APP_ORIGINS.split(",")) {
       const login = await fetch(`${base}/login`, {
-        method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "test@example.com", password: "password-test" }),
+        method: "POST",
+        headers: { Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "test@example.com",
+          password: "password-test",
+        }),
       });
       assert.equal(login.status, 200);
       const cookie = login.headers.get("set-cookie")!.split(";")[0];
-      const logout = await fetch(`${base}/logout`, { method: "POST", headers: { Origin: origin, Cookie: cookie } });
+      const logout = await fetch(`${base}/logout`, {
+        method: "POST",
+        headers: { Origin: origin, Cookie: cookie },
+      });
       assert.equal(logout.status, 200);
-      assert.equal((await fetch(`${base}/session`, { headers: { Cookie: cookie } })).status, 401);
+      assert.equal(
+        (await fetch(`${base}/session`, { headers: { Cookie: cookie } }))
+          .status,
+        401,
+      );
     }
-    for (const origin of ["https://evil.example", "https://oficinahorsepower.com.br.evil.example", "http://oficinahorsepower.com.br", "null"]) {
+    for (const origin of [
+      "https://evil.example",
+      "https://oficinahorsepower.com.br.evil.example",
+      "http://oficinahorsepower.com.br",
+      "null",
+    ]) {
       for (const path of ["login", "logout"]) {
-        assert.equal((await fetch(`${base}/${path}`, { method: "POST", headers: { Origin: origin } })).status, 403);
+        assert.equal(
+          (
+            await fetch(`${base}/${path}`, {
+              method: "POST",
+              headers: { Origin: origin },
+            })
+          ).status,
+          403,
+        );
       }
     }
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     db.close();
     for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
     }
   }
 });
