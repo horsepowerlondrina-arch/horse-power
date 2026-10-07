@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useEffect, useRef, useState } from "react";
 import { api, send } from "../lib/api";
 import { extensionMessage } from "../lib/extension";
@@ -239,7 +240,7 @@ export function CapturePanel({
         {source === "sky" && (
           <label className="field">
             Frete total da compra (R$)
-            <input
+            <NumericInput
               type="number"
               min="0"
               step="0.01"
@@ -357,7 +358,7 @@ export function CapturePanel({
               {!catalog && i.capture_source === "sky" ? (
                 <label className="capture-inline-field">
                   <span>Qtd.</span>
-                  <input
+                  <NumericInput
                     type="number"
                     min="0"
                     max="1000"
@@ -390,7 +391,7 @@ export function CapturePanel({
               ) : !catalog && i.capture_source === "tempario" ? (
                 <label className="capture-inline-field">
                   <span>Tempo (min)</span>
-                  <input
+                  <NumericInput
                     type="number"
                     min="1"
                     max="60000"

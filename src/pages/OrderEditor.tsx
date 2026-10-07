@@ -1,3 +1,4 @@
+import { NumericInput } from "../components/NumericInput";
 import { CapturePanel } from "../components/CapturePanel";
 import { OrderPrint } from "../components/OrderPrint";
 import { CatalogPicker } from "../components/CatalogPicker";
@@ -507,7 +508,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                       </button>
                     )}
                     <Field label="Quilometragem">
-                      <input
+                      <NumericInput
                         type="number"
                         min="0"
                         value={form.km}
@@ -678,7 +679,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                               </div>
                               <div className="item-fields">
                                 <Field label="Quantidade">
-                                  <input
+                                  <NumericInput
                                     type="number"
                                     min="1"
                                     max="10000"
@@ -694,7 +695,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                                   />
                                 </Field>
                                 <Field label="Valor unitário (R$)">
-                                  <input
+                                  <NumericInput
                                     type="number"
                                     min="0"
                                     step="0.01"
@@ -824,7 +825,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                   : "Desconto (R$)"
               }
             >
-              <input
+              <NumericInput
                 disabled={!!locked}
                 type="number"
                 min="0"

@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useState } from "react";
 import { useApp } from "../lib/context";
 import { send } from "../lib/api";
@@ -70,7 +71,7 @@ export function StockEntry({
             />
           </Field>
           <Field label="Quantidade recebida">
-            <input
+            <NumericInput
               type="number"
               min="1"
               max="100000"
@@ -87,7 +88,7 @@ export function StockEntry({
             ] as const
           ).map(([label, value, set]) => (
             <Field key={label} label={label}>
-              <input
+              <NumericInput
                 type="number"
                 required
                 min="0"

@@ -1,3 +1,4 @@
+import { NumericInput } from "../components/NumericInput";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../lib/context";
@@ -137,7 +138,7 @@ export function Payment() {
               </select>
             </Field>
             <Field label="Parcelas">
-              <input
+              <NumericInput
                 type="number"
                 min={1}
                 max={form.method === "Cartão de crédito" ? 12 : 24}
@@ -171,7 +172,7 @@ export function Payment() {
               />
             </Field>
             <Field label="Taxa da operadora — custo da oficina (%)">
-              <input
+              <NumericInput
                 type="number"
                 min={0}
                 max={100}
@@ -187,7 +188,7 @@ export function Payment() {
               />
             </Field>
             <Field label="Juros totais do parcelamento — cliente (%)">
-              <input
+              <NumericInput
                 type="number"
                 min={0}
                 max={100}

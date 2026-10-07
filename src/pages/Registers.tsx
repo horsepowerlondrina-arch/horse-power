@@ -1,3 +1,4 @@
+import { NumericInput } from "../components/NumericInput";
 import { CapturePanel } from "../components/CapturePanel";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -509,7 +510,7 @@ export function RegisterModal({
     full = false,
   ) => (
     <Field key={key} label={label} full={full}>
-      <input
+      <NumericInput
         type={type}
         required={required}
         value={form[key]}
@@ -523,7 +524,7 @@ export function RegisterModal({
   );
   const moneyInput = (key: string, label: string) => (
     <Field label={label}>
-      <input
+      <NumericInput
         type="number"
         required
         min="0"
@@ -641,7 +642,7 @@ export function RegisterModal({
                           ["km", "Quilometragem"],
                         ].map(([key, label]) => (
                           <Field key={key} label={label}>
-                            <input
+                            <NumericInput
                               required={["brand", "model", "year"].includes(
                                 key,
                               )}

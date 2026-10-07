@@ -1,3 +1,4 @@
+import { NumericInput } from "../components/NumericInput";
 import {
   useEffect,
   useRef,
@@ -687,7 +688,7 @@ export function ChecklistEditor() {
                   />
                 </Field>
                 <Field label="Ano *">
-                  <input
+                  <NumericInput
                     disabled={local}
                     type="number"
                     min="1900"
@@ -720,7 +721,7 @@ export function ChecklistEditor() {
                   />
                 </Field>
                 <Field label="Quilometragem (km)">
-                  <input
+                  <NumericInput
                     type="number"
                     min="0"
                     value={creating.km}
@@ -860,7 +861,7 @@ export function ChecklistEditor() {
               <input value={record.vehicle_label} disabled />
             </Field>
             <Field label="Quilometragem (km)">
-              <input
+              <NumericInput
                 disabled={locked}
                 type="number"
                 min="0"

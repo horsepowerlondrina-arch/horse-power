@@ -1,3 +1,4 @@
+import { NumericInput } from "../components/NumericInput";
 import { useState } from "react";
 import { useApp } from "../lib/context";
 import { send } from "../lib/api";
@@ -64,7 +65,7 @@ export function PartsPricing() {
                   {r.up_to === null ? (
                     "Acima da última faixa"
                   ) : (
-                    <input
+                    <NumericInput
                       aria-label={`Limite da faixa ${i + 1}`}
                       type="number"
                       required
@@ -89,7 +90,7 @@ export function PartsPricing() {
                   )}
                 </td>
                 <td>
-                  <input
+                  <NumericInput
                     aria-label={`Acréscimo da faixa ${i + 1}`}
                     type="number"
                     required
@@ -114,7 +115,7 @@ export function PartsPricing() {
                   />
                 </td>
                 <td>
-                  <input
+                  <NumericInput
                     aria-label={`Ganho mínimo da faixa ${i + 1}`}
                     type="number"
                     required
@@ -145,7 +146,7 @@ export function PartsPricing() {
       <h3>Simular uma peça</h3>
       <div className="form-grid">
         <Field label="Custo sem frete (R$)">
-          <input
+          <NumericInput
             type="number"
             min="0"
             step="0.01"
@@ -154,7 +155,7 @@ export function PartsPricing() {
           />
         </Field>
         <Field label="Frete por unidade (R$)">
-          <input
+          <NumericInput
             type="number"
             min="0"
             step="0.01"

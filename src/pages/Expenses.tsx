@@ -1,3 +1,4 @@
+import { NumericInput } from "../components/NumericInput";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -543,7 +544,7 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
           >
             <div className="modal-body form-grid">
               <Field label="Valor mensal (R$)">
-                <input
+                <NumericInput
                   type="number"
                   min="0"
                   step="0.01"
@@ -554,7 +555,7 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
                 />
               </Field>
               <Field label="Dia do vencimento">
-                <input
+                <NumericInput
                   type="number"
                   min="1"
                   max="31"

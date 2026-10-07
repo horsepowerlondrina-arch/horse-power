@@ -1,3 +1,4 @@
+import { NumericInput } from "../components/NumericInput";
 import { PartsPricing } from "./PartsPricing";
 import { RegisterModal } from "./Registers";
 import { CapturePanel } from "../components/CapturePanel";
@@ -292,7 +293,7 @@ export function Stock() {
           <form onSubmit={adjust}>
             <div className="modal-body form-grid">
               <Field label="Quantidade a movimentar" full>
-                <input
+                <NumericInput
                   type="number"
                   required
                   step="1"
@@ -608,7 +609,7 @@ export function Settings() {
                 ] as const
               ).map(([key, label]) => (
                 <Field key={key} label={label}>
-                  <input
+                  <NumericInput
                     type="number"
                     min={0}
                     max={100}
