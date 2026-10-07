@@ -1,0 +1,241 @@
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Modal } from "./ui";
+import { money, statusLabel } from "../lib/types";
+import { displayStatus } from "../lib/workflow";
+import {
+  dateBasisLabel,
+  durationLabel,
+  reportDate,
+  reportNote,
+  reportTotals,
+  type OrderFilters,
+  type OrderResult,
+} from "../lib/orderReports";
+
+function ReportContent({
+  results,
+  filters,
+  search,
+  company,
+}: {
+  results: OrderResult[];
+  filters: OrderFilters;
+  search: string;
+  company: string;
+}) {
+  const totals = reportTotals(results);
+  return (
+    <div className="os-result-content">
+      <h1>Resultado estimado da OS</h1>
+      <p>{company}</p>
+      <p>
+        {dateBasisLabel[filters.basis]}:{" "}
+        {filters.from ? reportDate(filters.from) : "sem início"} até{" "}
+        {filters.to ? reportDate(filters.to) : "sem fim"}. Situações:{" "}
+        {filters.statuses.map((s) => statusLabel[s]).join(", ") || "todas"}.
+        {search && ` Pesquisa: ${search}.`}
+      </p>
+      <p className="report-explanation">{reportNote}</p>
+      <div className="report-summary">
+        <span>{results.length} OS</span>
+        <span>
+          Valor das OS <b>{money(totals.total)}</b>
+        </span>
+        <span>
+          Custos <b>{money(totals.cost)}</b>
+        </span>
+        <span>
+          Taxas realizadas <b>{money(totals.fees)}</b>
+        </span>
+        <span>
+          Resultado estimado <b>{money(totals.result)}</b>
+        </span>
+      </div>
+      {results.map((r) => (
+        <article className="os-result-order" key={r.order.id}>
+          <h2>
+            OS {r.order.number} · {r.order.customer_name}
+          </h2>
+          <p>
+            {r.order.plate} · {statusLabel[displayStatus(r.order)]} · Abertura:{" "}
+            {reportDate(r.order.entered_on)} · Finalização:{" "}
+            {reportDate(r.order.completed_on)}
+          </p>
+          {(["products", "services"] as const).map((kind) => (
+            <section key={kind}>
+              <h3>{kind === "products" ? "Peças" : "Serviços"}</h3>
+              <div className="report-table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Descrição</th>
+                      <th>Qtd.</th>
+                      {kind === "services" && <th>Duração</th>}
+                      <th>Venda unit.</th>
+                      <th>
+                        {kind === "products"
+                          ? "Custo unit. com frete"
+                          : "Custo unit. de terceiros"}
+                      </th>
+                      <th>Venda total</th>
+                      <th>Custo total</th>
+                      <th>Resultado*</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r[kind].map((i) => (
+                      <tr key={i.id}>
+                        <td>{i.name}</td>
+                        <td>{i.quantity}</td>
+                        {kind === "services" && (
+                          <td>{durationLabel(i.duration_seconds)}</td>
+                        )}
+                        <td>{money(i.price)}</td>
+                        <td>{money(i.cost)}</td>
+                        <td>{money(i.sale)}</td>
+                        <td>{money(i.totalCost)}</td>
+                        <td>{money(i.result)}</td>
+                      </tr>
+                    ))}
+                    {!r[kind].length && (
+                      <tr>
+                        <td colSpan={kind === "services" ? 8 : 7}>
+                          Nenhum item.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <th colSpan={kind === "services" ? 5 : 4}>Subtotal</th>
+                      <th>
+                        {money(
+                          kind === "products" ? r.productSale : r.serviceSale,
+                        )}
+                      </th>
+                      <th>
+                        {money(
+                          kind === "products" ? r.productCost : r.serviceCost,
+                        )}
+                      </th>
+                      <th>
+                        {money(
+                          kind === "products"
+                            ? r.productSale - r.productCost
+                            : r.serviceSale - r.serviceCost,
+                        )}
+                      </th>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </section>
+          ))}
+          <p>* Antes do desconto e das taxas.</p>
+          <h3>Pagamentos realizados</h3>
+          <div className="report-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Forma</th>
+                  <th>Valor bruto</th>
+                  <th>Taxa</th>
+                  <th>Valor líquido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {r.payments.map((p) => (
+                  <tr key={p.id}>
+                    <td>{reportDate(p.day)}</td>
+                    <td>{p.method}</td>
+                    <td>{money(p.gross)}</td>
+                    <td>{money(p.fee)}</td>
+                    <td>{money(p.net)}</td>
+                  </tr>
+                ))}
+                {!r.payments.length && (
+                  <tr>
+                    <td colSpan={5}>Nenhum pagamento realizado.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="report-summary">
+            <span>
+              Desconto <b>{money(r.discount)}</b>
+            </span>
+            <span>
+              Valor da OS <b>{money(r.total)}</b>
+            </span>
+            <span>
+              Custos <b>{money(r.productCost + r.serviceCost)}</b>
+            </span>
+            <span>
+              Taxas realizadas <b>{money(r.fees)}</b>
+            </span>
+            <span>
+              Resultado estimado <b>{money(r.result)}</b>
+            </span>
+            <span>
+              Margem estimada{" "}
+              <b>
+                {r.margin === null
+                  ? "—"
+                  : `${(r.margin * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`}
+              </b>
+            </span>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+export function OrderResultReport(props: {
+  results: OrderResult[];
+  filters: OrderFilters;
+  search: string;
+  company: string;
+  onClose: () => void;
+  onExcel: () => void;
+  exporting: boolean;
+}) {
+  useEffect(() => {
+    document.body.classList.add("printing-os-results");
+    return () => document.body.classList.remove("printing-os-results");
+  }, []);
+  return (
+    <>
+      <Modal
+        wide
+        title="Relatório das OS selecionadas"
+        description="Confira os detalhes e escolha como salvar o relatório."
+        onClose={props.onClose}
+      >
+        <div className="modal-body">
+          <div className="report-actions">
+            <button className="button primary" onClick={() => window.print()}>
+              Imprimir / salvar PDF
+            </button>
+            <button
+              className="button"
+              onClick={props.onExcel}
+              disabled={props.exporting}
+            >
+              {props.exporting ? "Gerando Excel..." : "Baixar Excel (.xlsx)"}
+            </button>
+          </div>
+          <ReportContent {...props} />
+        </div>
+      </Modal>
+      {createPortal(
+        <div className="os-results-print">
+          <ReportContent {...props} />
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
