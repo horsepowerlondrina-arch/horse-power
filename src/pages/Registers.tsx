@@ -717,7 +717,12 @@ export function RegisterModal({
                 {input("sku", "Referência *", "text", true)}
                 {input("name", "Descrição *", "text", true, true)}
                 {input("category", "Categoria", "text", false, true)}
-                {moneyInput("cost", "Custo sem frete (R$)")}
+                {moneyInput(
+                  "cost",
+                  form.kind === "service"
+                    ? "Custo do serviço / terceiros (R$)"
+                    : "Custo sem frete (R$)",
+                )}
                 {form.kind === "product" &&
                   moneyInput("freight_unit", "Frete por unidade (R$)")}
                 {moneyInput("price", "Preço de venda (R$)")}
