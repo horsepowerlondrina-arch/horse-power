@@ -691,18 +691,19 @@ export function Settings() {
             </section>
             <section className="panel settings-card">
               <Download size={23} />
-              <h2>Conector Horse Power 1.3.3</h2>
+              <h2>Extensão Horse Power para Chrome</h2>
               <p>
                 Envie peças do Sky e serviços do Tempario ao catálogo, orçamento
-                ou OS. Inclui painel minimizável, envio da placa, frete editável e desconexão ao descartar pendentes.
+                ou OS. Instale pela Chrome Web Store. As versões publicadas na loja recebem atualizações pelo Chrome.
               </p>
               <a
                 className="button primary"
-                href="/downloads/horse-power-conector.zip?v=1.3.3"
-                download
+                href="https://chromewebstore.google.com/detail/ddmnjpmldgnjefjkachlpicngaphlobf"
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 <Download size={16} />
-                Baixar extensão do Chrome
+                Instalar pela Chrome Web Store
               </a>
             </section>
             <section className="panel settings-card full">
