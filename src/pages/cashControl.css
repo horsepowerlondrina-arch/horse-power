@@ -1,0 +1,45 @@
+.cash-accounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+.cash-account {
+  padding: 20px;
+}
+.cash-account h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+.cash-account > strong {
+  font-size: 26px;
+}
+.cash-period {
+  padding: 24px;
+  margin-top: 24px;
+}
+.cash-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: end;
+  margin: 16px 0;
+}
+.cash-filter .field {
+  min-width: 170px;
+}
+.cash-period .report-table-scroll {
+  position: relative;
+}
+@media (max-width: 640px) {
+  .cash-period {
+    padding: 16px;
+  }
+  .cash-filter .field {
+    flex: 1;
+    min-width: 140px;
+  }
+  .cash-filter button {
+    width: 100%;
+  }
+}

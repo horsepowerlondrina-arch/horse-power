@@ -55,6 +55,12 @@ import {
 } from "./services/workshop.js";
 import { statuses } from "./domain/orders.js";
 import { configurePlan, settleInstallment } from "./services/payments.js";
+import {
+  cashControl,
+  saveCashAccount,
+  adjustCash,
+} from "./services/cashControl.js";
+import { requireAdmin } from "./services/payments.js";
 import { calculatePlan, paymentMethods } from "./domain/payments.js";
 import { lookupVehicle, providerToken } from "./services/vehicleLookup.js";
 const text = z.string().trim().max(500).default("");
@@ -410,6 +416,9 @@ export function createApp(db: DB) {
           `SELECT r.*,(SELECT number FROM orders o WHERE o.tenant_id=r.tenant_id AND o.id=r.order_id) order_number,c.name customer_name,CASE WHEN r.plan_configured=0 THEN r.amount ELSE COALESCE((SELECT SUM(gross) FROM payment_installments p WHERE p.tenant_id=r.tenant_id AND p.receivable_id=r.id AND p.status='open'),0) END balance FROM receivables r JOIN customers c ON c.id=r.customer_id AND c.tenant_id=r.tenant_id WHERE r.tenant_id=? ORDER BY r.due_on`,
         )
         .all(tenant),
+      cash_accounts: await db
+        .prepare("SELECT * FROM cash_accounts WHERE tenant_id=? ORDER BY name")
+        .all(tenant),
       cash: await db
         .prepare(
           "SELECT * FROM cash_entries WHERE tenant_id=? ORDER BY created_at",
@@ -492,7 +501,7 @@ export function createApp(db: DB) {
     res.json({
       templates: await db
         .prepare(
-          "SELECT * FROM expense_templates WHERE tenant_id=? ORDER BY category,description",
+          "SELECT * FROM expense_templates WHERE tenant_id=? AND deleted_at IS NULL ORDER BY category,description",
         )
         .all(t),
       payables: await db
@@ -553,13 +562,20 @@ export function createApp(db: DB) {
     res.json({ ok: true });
   });
   app.post("/api/payables/:id/pay", async (req, res) => {
-    const value = z.object({ paid_on: date, method: name }).parse(req.body);
+    const value = z
+      .object({
+        paid_on: date,
+        method: name,
+        account_id: z.string().min(1).optional(),
+      })
+      .parse(req.body);
     await payExpense(
       db,
       res.locals.context,
       String(req.params.id),
       value.paid_on,
       value.method,
+      value.account_id,
     );
     res.json({ ok: true });
   });
@@ -583,29 +599,179 @@ export function createApp(db: DB) {
       .parse(req.body.month);
     res.json(await generateExpenses(db, res.locals.context, month));
   });
+  const templateSchema = z.object({
+    description: name.optional(),
+    category: name.optional(),
+    supplier: text.optional(),
+    amount: integer.nullable(),
+    due_day: z.number().int().min(1).max(31),
+    remaining_months: z.number().int().min(1).max(600).nullable().optional(),
+    start_month: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+      .nullable()
+      .optional(),
+    source: text.optional(),
+    request_id: z.string().uuid().optional(),
+    active: z.number().int().min(0).max(1),
+  });
+  app.post("/api/expense-templates", async (req, res) => {
+    const ctx: Context = res.locals.context;
+    requireAdmin(ctx);
+    const v = templateSchema
+        .extend({ description: name, category: name })
+        .parse(req.body),
+      record = v.request_id || id();
+    await transaction(db, async () => {
+      const existing = await db
+        .prepare("SELECT * FROM expense_templates WHERE tenant_id=? AND id=?")
+        .get(ctx.tenantId, record);
+      if (existing) {
+        const expected = {
+          description: v.description,
+          category: v.category,
+          supplier: v.supplier || "",
+          amount: v.amount,
+          due_day: v.due_day,
+          remaining_months: v.remaining_months ?? null,
+          start_month: v.start_month ?? null,
+          source: v.source || "",
+          active: v.active,
+        };
+        if (
+          existing.deleted_at ||
+          !Object.entries(expected).every(
+            ([key, value]) => existing[key] === value,
+          )
+        )
+          throw new Error(
+            "Este pedido já cadastrou outro gasto. Confira o planejamento antes de repetir.",
+          );
+        return;
+      }
+      await db
+        .prepare(
+          "INSERT INTO expense_templates(id,tenant_id,description,category,supplier,amount,due_day,remaining_months,start_month,source,active) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          record,
+          ctx.tenantId,
+          v.description,
+          v.category,
+          v.supplier || "",
+          v.amount,
+          v.due_day,
+          v.remaining_months ?? null,
+          v.start_month ?? null,
+          v.source || "",
+          v.active,
+        );
+      await audit(db, ctx, "expense_template.created", record);
+    });
+    res.status(201).json({ id: record });
+  });
   app.put("/api/expense-templates/:id", async (req, res) => {
     const ctx: Context = res.locals.context;
-    const p = await scoped(
-      db,
-      "expense_templates",
-      ctx.tenantId,
-      String(req.params.id),
-    );
-    const v = z
-      .object({
-        amount: integer.nullable(),
-        due_day: z.number().int().min(1).max(31),
-        active: z.number().int().min(0).max(1),
-      })
-      .parse(req.body);
-    await db
-      .prepare(
-        "UPDATE expense_templates SET amount=?,due_day=?,active=? WHERE tenant_id=? AND id=?",
-      )
-      .run(v.amount, v.due_day, v.active, ctx.tenantId, p.id);
-    await audit(db, ctx, "expense_template.updated", p.id);
+    requireAdmin(ctx);
+    const v = templateSchema.parse(req.body);
+    await transaction(db, async () => {
+      const p = await scoped(
+        db,
+        "expense_templates",
+        ctx.tenantId,
+        String(req.params.id),
+      );
+      if (p.deleted_at) throw new Error("Este gasto recorrente foi excluído.");
+      await db
+        .prepare(
+          "UPDATE expense_templates SET description=?,category=?,supplier=?,amount=?,due_day=?,remaining_months=?,start_month=?,source=?,active=? WHERE tenant_id=? AND id=?",
+        )
+        .run(
+          v.description ?? p.description,
+          v.category ?? p.category,
+          v.supplier ?? p.supplier,
+          v.amount,
+          v.due_day,
+          v.remaining_months === undefined
+            ? p.remaining_months
+            : v.remaining_months,
+          v.start_month === undefined ? p.start_month : v.start_month,
+          v.source ?? p.source,
+          v.active,
+          ctx.tenantId,
+          p.id,
+        );
+      await audit(db, ctx, "expense_template.updated", p.id);
+    });
     res.json({ ok: true });
   });
+  app.delete("/api/expense-templates/:id", async (req, res) => {
+    const ctx: Context = res.locals.context;
+    requireAdmin(ctx);
+    await transaction(db, async () => {
+      const p = await scoped(
+        db,
+        "expense_templates",
+        ctx.tenantId,
+        String(req.params.id),
+      );
+      await db
+        .prepare(
+          "UPDATE expense_templates SET active=0,deleted_at=? WHERE tenant_id=? AND id=?",
+        )
+        .run(new Date().toISOString(), ctx.tenantId, p.id);
+      await audit(db, ctx, "expense_template.deleted", p.id);
+    });
+    res.json({ ok: true });
+  });
+  const accountSchema = z.object({
+    name,
+    kind: z.enum(["bank", "cash"]),
+    opening_balance: z.number().int().min(-100000000).max(100000000),
+    opening_on: date,
+    active: z.number().int().min(0).max(1).default(1),
+    request_id: z.string().uuid().optional(),
+  });
+  app.get("/api/cash-control", async (_req, res) =>
+    res.json(await cashControl(db, res.locals.context)),
+  );
+  app.post("/api/cash-accounts", async (req, res) =>
+    res
+      .status(201)
+      .json(
+        await saveCashAccount(
+          db,
+          res.locals.context,
+          accountSchema.parse(req.body),
+        ),
+      ),
+  );
+  app.put("/api/cash-accounts/:id", async (req, res) =>
+    res.json(
+      await saveCashAccount(
+        db,
+        res.locals.context,
+        accountSchema.parse(req.body),
+        String(req.params.id),
+      ),
+    ),
+  );
+  app.post("/api/cash-adjustments", async (req, res) =>
+    res.json(
+      await adjustCash(
+        db,
+        res.locals.context,
+        z
+          .object({
+            account_id: z.string().min(1),
+            target_balance: z.number().int().min(-100000000).max(100000000),
+            reason: z.string().trim().min(3).max(500),
+            request_id: z.string().uuid(),
+          })
+          .parse(req.body),
+      ),
+    ),
+  );
   app.post("/api/orders/:id/capture-session", async (req, res) => {
     res.json(
       await beginCapture(
@@ -838,7 +1004,12 @@ export function createApp(db: DB) {
     ),
   );
   app.post("/api/installments/:id/settle", async (req, res) => {
-    await settleInstallment(db, res.locals.context, String(req.params.id));
+    await settleInstallment(
+      db,
+      res.locals.context,
+      String(req.params.id),
+      z.string().min(1).optional().parse(req.body.account_id),
+    );
     res.json({ ok: true });
   });
   for (const table of [
@@ -1075,6 +1246,7 @@ export function createApp(db: DB) {
           "Boleto",
         ])
         .parse(req.body.method),
+      z.string().min(1).optional().parse(req.body.account_id),
     );
     res.json({ ok: true });
   });

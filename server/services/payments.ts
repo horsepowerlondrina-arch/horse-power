@@ -2,6 +2,7 @@ import { transaction, type DB } from "../db/database.js";
 import type { Context } from "../auth/session.js";
 import { calculatePlan, type PaymentInput } from "../domain/payments.js";
 import { id, scoped, audit } from "./workshop.js";
+import { cashAccount, cashToday, recordCash } from "./cashControl.js";
 export function requireAdmin(ctx: Context) {
   if (ctx.role !== "owner")
     throw Object.assign(new Error("Esta ação é exclusiva do administrador."), {
@@ -70,13 +71,20 @@ export async function configurePlan(
     return plan;
   });
 }
-export async function settleInstallment(db: DB, ctx: Context, record: string) {
+export async function settleInstallment(
+  db: DB,
+  ctx: Context,
+  record: string,
+  accountId?: string,
+) {
   requireAdmin(ctx);
   return await transaction(db, async () => {
     const part = await scoped(db, "payment_installments", ctx.tenantId, record);
     if (part.status !== "open")
       throw new Error("Esta parcela já foi recebida.");
     const now = new Date().toISOString();
+    const day = cashToday(),
+      account = await cashAccount(db, ctx, accountId, day);
     await db
       .prepare(
         "UPDATE payment_installments SET status='paid',paid_at=? WHERE tenant_id=? AND id=?",
@@ -122,6 +130,22 @@ export async function settleInstallment(db: DB, ctx: Context, record: string) {
           ctx.tenantId,
           part.receivable_id,
         );
+    const order = await db
+      .prepare(
+        "SELECT o.number FROM orders o JOIN receivables r ON r.order_id=o.id AND r.tenant_id=o.tenant_id WHERE r.tenant_id=? AND r.id=?",
+      )
+      .get(ctx.tenantId, part.receivable_id);
+    await recordCash(db, ctx, account, {
+      day,
+      amount: part.net,
+      gross_amount: part.gross,
+      fee_amount: part.fee,
+      description:
+        "Recebimento OS #" + order?.number + " · parcela " + part.sequence,
+      method: part.method,
+      origin: "receipt",
+      source_id: record,
+    });
     await audit(db, ctx, "payment.installment_paid", record);
   });
 }

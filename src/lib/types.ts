@@ -41,6 +41,7 @@ export interface Workspace {
   movements: Entity[];
   installments: Entity[];
   payment_settings: Entity | null;
+  cash_accounts?: Entity[];
   card_rates?: Entity[];
   plate_lookup_enabled?: boolean;
 }

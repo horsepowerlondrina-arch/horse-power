@@ -2,12 +2,15 @@ import { type DB, transaction } from "../db/database.js";
 import { type Context } from "../auth/session.js";
 import { audit, id, scoped } from "./workshop.js";
 import { requireAdmin } from "./payments.js";
+import { cashAccount, recordCash } from "./cashControl.js";
 export async function generateExpenses(db: DB, ctx: Context, month: string) {
   requireAdmin(ctx);
   return await transaction(db, async () => {
     let created = 0;
     const templates = await db
-      .prepare("SELECT * FROM expense_templates WHERE tenant_id=? AND active=1")
+      .prepare(
+        "SELECT * FROM expense_templates WHERE tenant_id=? AND active=1 AND deleted_at IS NULL",
+      )
       .all(ctx.tenantId);
     for (const t of templates) {
       if (t.amount === null || Number(t.amount) <= 0) continue;
@@ -38,7 +41,7 @@ export async function generateExpenses(db: DB, ctx: Context, month: string) {
         String(Math.min(Number(t.due_day), last)).padStart(2, "0");
       const result = await db
         .prepare(
-          "INSERT OR IGNORE INTO payables(id,tenant_id,template_id,description,category,amount,due_on,notes) VALUES(?,?,?,?,?,?,?,?)",
+          "INSERT OR IGNORE INTO payables(id,tenant_id,template_id,description,category,amount,due_on,notes,supplier) VALUES(?,?,?,?,?,?,?,?,?)",
         )
         .run(
           id(),
@@ -52,6 +55,7 @@ export async function generateExpenses(db: DB, ctx: Context, month: string) {
           t.amount,
           due,
           t.source,
+          t.supplier || "",
         );
       created += Number(result.changes);
     }
@@ -65,16 +69,26 @@ export async function payExpense(
   record: string,
   paidOn: string,
   method: string,
+  accountId?: string,
 ) {
   requireAdmin(ctx);
   return await transaction(db, async () => {
     const p = await scoped(db, "payables", ctx.tenantId, record);
     if (p.status !== "open") throw new Error("Esta conta não está em aberto.");
+    const account = await cashAccount(db, ctx, accountId, paidOn);
     await db
       .prepare(
         "UPDATE payables SET status='paid',paid_on=?,method=? WHERE tenant_id=? AND id=?",
       )
       .run(paidOn, method, ctx.tenantId, record);
+    await recordCash(db, ctx, account, {
+      day: paidOn,
+      amount: -p.amount,
+      description: p.description,
+      method,
+      origin: "expense",
+      source_id: record,
+    });
     await audit(db, ctx, "expense.paid", record);
   });
 }

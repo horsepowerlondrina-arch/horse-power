@@ -44,7 +44,8 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
     [paying, setPaying] = useState<Entity | null>(null),
     [template, setTemplate] = useState<Entity | null>(null),
     [generating, setGenerating] = useState(false),
-    [cancel, setCancel] = useState<Entity | null>(null);
+    [cancel, setCancel] = useState<Entity | null>(null),
+    [deletingTemplate, setDeletingTemplate] = useState<Entity | null>(null);
   const load = async () => {
     try {
       setRecords(await api("/expenses"));
@@ -264,6 +265,26 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
               >
                 Gerar contas do mês
               </button>
+              <button
+                className="button"
+                onClick={() =>
+                  setTemplate({
+                    id: "",
+                    request_id: crypto.randomUUID(),
+                    description: "",
+                    category: "Fixo",
+                    supplier: "",
+                    amount: "",
+                    due_day: 10,
+                    remaining_months: "",
+                    start_month: "",
+                    source: "",
+                    active: 1,
+                  })
+                }
+              >
+                Novo gasto recorrente
+              </button>
             </div>
             <div className="table-scroll">
               <table>
@@ -305,7 +326,13 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
                             })
                           }
                         >
-                          Ajustar
+                          Editar
+                        </button>
+                        <button
+                          className="button danger"
+                          onClick={() => setDeletingTemplate(t)}
+                        >
+                          Excluir
                         </button>
                       </td>
                     </tr>
@@ -477,6 +504,7 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
                   send(`/payables/${paying.id}/pay`, {
                     paid_on: paying.paid_on,
                     method: paying.method,
+                    account_id: paying.account_id || undefined,
                   }),
                 )
               )
@@ -484,6 +512,29 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
             }}
           >
             <div className="modal-body form-grid">
+              {!!data.cash_accounts?.length && (
+                <Field label="Conta de saída">
+                  <select
+                    required
+                    value={paying.account_id || ""}
+                    onChange={(e) =>
+                      setPaying({ ...paying, account_id: e.target.value })
+                    }
+                  >
+                    <option value="">Selecione a conta</option>
+                    {data.cash_accounts
+                      .filter((a) => a.active)
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} ·{" "}
+                          {a.kind === "cash"
+                            ? "Dinheiro físico"
+                            : "Conta bancária"}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+              )}
               <Field label="Data do pagamento">
                 <input
                   required
@@ -519,14 +570,20 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
         </Modal>
       )}
       {template && (
-        <Modal title={template.description} onClose={() => setTemplate(null)}>
+        <Modal
+          title={
+            template.id ? "Editar gasto recorrente" : "Novo gasto recorrente"
+          }
+          onClose={() => setTemplate(null)}
+        >
           <form
             onSubmit={async (e) => {
               e.preventDefault();
               if (
                 await action(() =>
                   send(
-                    `/expense-templates/${template.id}`,
+                    "/expense-templates" +
+                      (template.id ? "/" + template.id : ""),
                     {
                       amount:
                         template.amount === ""
@@ -534,8 +591,17 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
                           : Math.round(Number(template.amount) * 100),
                       due_day: Number(template.due_day),
                       active: template.active,
+                      description: template.description,
+                      category: template.category,
+                      supplier: template.supplier || "",
+                      remaining_months: template.remaining_months
+                        ? Number(template.remaining_months)
+                        : null,
+                      start_month: template.start_month || null,
+                      source: template.source || "",
+                      request_id: template.request_id,
                     },
-                    "PUT",
+                    template.id ? "PUT" : "POST",
                   ),
                 )
               )
@@ -543,6 +609,58 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
             }}
           >
             <div className="modal-body form-grid">
+              <Field label="Descrição" full>
+                <input
+                  required
+                  maxLength={200}
+                  value={template.description}
+                  onChange={(e) =>
+                    setTemplate({ ...template, description: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Categoria">
+                <input
+                  required
+                  maxLength={200}
+                  value={template.category}
+                  onChange={(e) =>
+                    setTemplate({ ...template, category: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Fornecedor">
+                <input
+                  maxLength={500}
+                  value={template.supplier || ""}
+                  onChange={(e) =>
+                    setTemplate({ ...template, supplier: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Parcelas restantes (vazio = recorrente)">
+                <NumericInput
+                  type="number"
+                  min="1"
+                  max="600"
+                  value={template.remaining_months ?? ""}
+                  onChange={(e) =>
+                    setTemplate({
+                      ...template,
+                      remaining_months: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+              <Field label="Mês inicial (opcional)">
+                <input
+                  type="month"
+                  value={template.start_month || ""}
+                  onChange={(e) =>
+                    setTemplate({ ...template, start_month: e.target.value })
+                  }
+                />
+              </Field>
               <Field label="Valor mensal (R$)">
                 <NumericInput
                   type="number"
@@ -620,6 +738,44 @@ export function Expenses({ cash = false }: { cash?: boolean }) {
               }}
             >
               Gerar contas de {month}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {deletingTemplate && (
+        <Modal
+          title="Excluir gasto recorrente"
+          description={deletingTemplate.description}
+          onClose={() => setDeletingTemplate(null)}
+        >
+          <div className="modal-body">
+            Este gasto sairá do planejamento e não gerará novas contas. As
+            contas já lançadas e os pagamentos serão preservados.
+          </div>
+          <div className="modal-footer">
+            <button
+              className="button"
+              onClick={() => setDeletingTemplate(null)}
+            >
+              Voltar
+            </button>
+            <button
+              className="button danger"
+              disabled={busy}
+              onClick={async () => {
+                if (
+                  await action(() =>
+                    send(
+                      "/expense-templates/" + deletingTemplate.id,
+                      {},
+                      "DELETE",
+                    ),
+                  )
+                )
+                  setDeletingTemplate(null);
+              }}
+            >
+              Excluir do planejamento
             </button>
           </div>
         </Modal>

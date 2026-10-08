@@ -26,6 +26,8 @@ export function Payment() {
     first_due_on: today(),
     pass_card_fee: false,
   });
+  const [accountId, setAccountId] = useState("");
+  const cashAccounts = (data.cash_accounts || []).filter((a) => a.active);
   const [preview, setPreview] = useState<Entity | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -320,6 +322,25 @@ export function Payment() {
           description={`Cliente paga ${money(confirm.gross)}. O caixa receberá ${money(confirm.net)}, após ${money(confirm.fee)} de taxa.`}
           onClose={() => !busy && setConfirm(null)}
         >
+          {!!data.cash_accounts?.length && (
+            <div className="modal-body">
+              <Field label="Conta que recebe o valor líquido">
+                <select
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                  required
+                >
+                  <option value="">Selecione a conta</option>
+                  {cashAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ·{" "}
+                      {a.kind === "cash" ? "Dinheiro físico" : "Conta bancária"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          )}
           <div className="modal-footer">
             <button
               className="button"
@@ -330,12 +351,14 @@ export function Payment() {
             </button>
             <button
               className="button primary"
-              disabled={busy}
+              disabled={busy || (!!data.cash_accounts?.length && !accountId)}
               onClick={async () => {
                 setBusy(true);
                 setError("");
                 try {
-                  await send(`/installments/${confirm.id}/settle`, {});
+                  await send(`/installments/${confirm.id}/settle`, {
+                    account_id: accountId || undefined,
+                  });
                   await refresh();
                   setConfirm(null);
                   notify("Parcela recebida e caixa atualizado.");

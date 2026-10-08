@@ -39,6 +39,8 @@ export function postgresSql(input: string) {
     "payment_settings",
     "expense_templates",
     "payables",
+    "cash_accounts",
+    "cash_movements",
     "card_rates",
     "public_shares",
     "import_batches",

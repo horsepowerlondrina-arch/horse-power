@@ -1,4 +1,5 @@
 import { advanceOnEnter } from "./lib/enterNavigation";
+import { CashControl } from "./pages/CashControl";
 import { PeopleRegisters } from "./pages/PeopleRegisters";
 import { PartsProfit } from "./pages/PartsProfit";
 import { Home } from "./pages/Home";
@@ -466,7 +467,11 @@ export function App() {
                     </>
                   }
                 />
-                <Route path="/financeiro/caixa" element={<Expenses cash />} />
+                <Route path="/financeiro/caixa" element={<CashControl />} />
+                <Route
+                  path="/financeiro/caixa/historico"
+                  element={<Expenses cash />}
+                />
                 <Route path="/configuracoes" element={<SettingsPage />} />
                 <Route path="/" element={<Navigate to="/inicio" replace />} />
                 <Route

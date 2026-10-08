@@ -442,6 +442,7 @@ export async function settle(
   ctx: Context,
   record: string,
   method: string,
+  accountId?: string,
 ) {
   requireAdmin(ctx);
   const r = await scoped(db, "receivables", ctx.tenantId, record);
@@ -461,7 +462,7 @@ export async function settle(
     .all(ctx.tenantId, record);
   if (parts.length !== 1)
     throw new Error("Receba cada parcela na tela de pagamento.");
-  await settleInstallment(db, ctx, String(parts[0].id));
+  await settleInstallment(db, ctx, String(parts[0].id), accountId);
 }
 export async function mechanicWorkspace(db: DB, tenant: string) {
   const orders = (await listOrders(db, tenant))
