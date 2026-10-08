@@ -1,3 +1,4 @@
+import { advanceOnEnter } from "./lib/enterNavigation";
 import { PeopleRegisters } from "./pages/PeopleRegisters";
 import { PartsProfit } from "./pages/PartsProfit";
 import { Home } from "./pages/Home";
@@ -109,6 +110,11 @@ export function App() {
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, []);
+  useEffect(() => {
+    if (!session) return;
+    document.addEventListener("keydown", advanceOnEnter);
+    return () => document.removeEventListener("keydown", advanceOnEnter);
+  }, [session]);
   if (loading)
     return (
       <div className="loading-screen" role="status" aria-live="polite">
