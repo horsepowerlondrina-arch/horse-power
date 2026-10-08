@@ -856,7 +856,7 @@ test("faturamento separa peças e serviços com desconto proporcional e custo hi
         "2000-01-01",
         "2100-01-01",
       ),
-      { products: 18000, services: 9000, productProfit: 10000 },
+      { products: 18000, services: 9000, productProfit: 10000, productCost: 8000, missingCostOrders: 0, serviceCost: 0, serviceProfit: 9000 },
     );
   } finally {
     db.close();

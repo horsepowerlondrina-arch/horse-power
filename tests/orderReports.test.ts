@@ -206,3 +206,41 @@ test("Excel is an OOXML ZIP snapshot with typed money and safe literal user text
   if (process.env.REPORT_TEST_XLSX)
     writeFileSync(process.env.REPORT_TEST_XLSX, bytes);
 });
+
+
+test("missing part costs exclude entire OS profit while preserving revenue and valid zero-cost internal services", () => {
+  const incomplete = { ...order, items: order.items.map((i) => i.kind === "product" ? { ...i, cost: 0 } : i) };
+  const result = orderResult(incomplete, data);
+  assert.equal(result.result, null);
+  assert.equal(result.margin, null);
+  assert.equal(result.products[0].result, null);
+  assert.equal(reportTotals([result]).result, 0);
+  assert.equal(reportTotals([result, orderResult(order, data)]).result, 47300);
+  assert.equal(reportTotals([result]).total, order.total);
+  const bytes = resultWorkbook([result], filters, "", "Oficina");
+  assert.match(new TextDecoder().decode(bytes), /Custo não informado/);
+  const corrected = orderResult({ ...incomplete, items: order.items }, data);
+  assert.equal(corrected.result, 47300);
+  const internal = orderResult({ ...order, total: 5000, items: [{ id: "internal", kind: "service", price: 5000, quantity: 1, cost: 0 }] }, { receivables: [], cash: [], installments: [] });
+  assert.equal(internal.result, 5000);
+});
+
+test("parts without costs never inflate profit; service discounts and third-party costs are separate", async () => {
+  const { revenueBreakdown } = await import("../src/lib/workflow");
+  const sample = { ...order, kind: "order", status: "completed", completed_on: "2026-10-08T15:00:00Z", total: 45000, discount: 5000, items: [
+    { id: "part", kind: "product", price: 20000, cost: 0, quantity: 1 },
+    { id: "own", kind: "service", price: 20000, cost: 0, quantity: 1 },
+    { id: "third", kind: "service", price: 10000, cost: 6000, quantity: 1 },
+  ] } as typeof order;
+  const totals = revenueBreakdown([sample], "2026-10-01", "2026-10-31");
+  assert.equal(totals.products, 18000);
+  assert.equal(totals.productProfit, 0);
+  assert.equal(totals.missingCostOrders, 1);
+  assert.equal(totals.services, 27000);
+  assert.equal(totals.serviceCost, 6000);
+  assert.equal(totals.serviceProfit, 21000);
+  const fixed = { ...sample, items: sample.items.map((i) => i.kind === "product" ? { ...i, cost: 12000 } : i) };
+  assert.equal(revenueBreakdown([fixed], "2026-10-01", "2026-10-31").productProfit, 6000);
+  const mixed = { ...fixed, items: [...fixed.items, { id: "unknown", kind: "product", quantity: 1, price: 1000, cost: 0 }] };
+  assert.equal(orderResult(mixed, data).result, null);
+});

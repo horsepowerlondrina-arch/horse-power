@@ -121,7 +121,7 @@ export function Dashboard() {
         <Stat
           label="Lucro bruto das peças"
           value={money(revenue.productProfit)}
-          detail="Venda menos custo das peças"
+          detail={`Somente OS com custos informados · ${revenue.missingCostOrders} OS pendentes de custo`}
           icon={<ArrowUpRight size={18} />}
         />
         <Stat

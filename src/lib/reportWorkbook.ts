@@ -10,7 +10,7 @@ import {
   type OrderResult,
 } from "./orderReports";
 import { createWorkbook, type Cell, type Sheet } from "./xlsx";
-const currency = (cents: number): Cell => ({
+const currency = (cents: number | null): Cell => cents === null ? "Custo não informado" : ({
   value: cents / 100,
   style: "money",
 });
@@ -65,7 +65,7 @@ export function resultWorkbook(
           reportDate(r.order.entered_on),
           reportDate(r.order.completed_on),
           currency(r.productSale),
-          currency(r.productCost),
+          currency(r.missingCost ? null : r.productCost),
           currency(r.serviceSale),
           currency(r.serviceCost),
           currency(r.discount),
@@ -89,7 +89,7 @@ export function resultWorkbook(
           currency(totals.total),
           currency(totals.fees),
           currency(totals.result),
-          totals.total
+          results.some((r) => r.missingCost) ? "—" : totals.total
             ? Math.round((totals.result / totals.total) * 10000) / 100
             : "—",
         ],
@@ -122,9 +122,9 @@ export function resultWorkbook(
             i.name,
             i.quantity,
             currency(i.price),
-            currency(i.cost),
+            currency(i.missingCost ? null : i.cost),
             currency(i.sale),
-            currency(i.totalCost),
+            currency(i.missingCost ? null : i.totalCost),
             currency(i.result),
             kind === "services" ? durationLabel(i.duration_seconds) : "—",
           ]),

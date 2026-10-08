@@ -25,6 +25,7 @@ function ReportContent({
   company: string;
 }) {
   const totals = reportTotals(results);
+  const missing = results.filter((r) => r.missingCost).length;
   return (
     <div className="os-result-content">
       <h1>Resultado estimado da OS</h1>
@@ -37,6 +38,7 @@ function ReportContent({
         {search && ` Pesquisa: ${search}.`}
       </p>
       <p className="report-explanation">{reportNote}</p>
+      {missing > 0 && <p>{missing} OS com custo de peças não informado, excluídas do total de resultado. Custos apresentados são parciais.</p>}
       <div className="report-summary">
         <span>{results.length} OS</span>
         <span>
@@ -92,10 +94,10 @@ function ReportContent({
                           <td>{durationLabel(i.duration_seconds)}</td>
                         )}
                         <td>{money(i.price)}</td>
-                        <td>{money(i.cost)}</td>
+                        <td>{i.missingCost ? "Custo não informado" : money(i.cost)}</td>
                         <td>{money(i.sale)}</td>
-                        <td>{money(i.totalCost)}</td>
-                        <td>{money(i.result)}</td>
+                        <td>{i.missingCost ? "Custo não informado" : money(i.totalCost)}</td>
+                        <td>{i.result === null ? "Custo não informado" : money(i.result)}</td>
                       </tr>
                     ))}
                     {!r[kind].length && (
@@ -115,16 +117,10 @@ function ReportContent({
                         )}
                       </th>
                       <th>
-                        {money(
-                          kind === "products" ? r.productCost : r.serviceCost,
-                        )}
+                        {kind === "products" && r.missingCost ? "Custo não informado" : money(kind === "products" ? r.productCost : r.serviceCost)}
                       </th>
                       <th>
-                        {money(
-                          kind === "products"
-                            ? r.productSale - r.productCost
-                            : r.serviceSale - r.serviceCost,
-                        )}
+                        {kind === "products" && r.missingCost ? "Custo não informado" : money(kind === "products" ? r.productSale - r.productCost : r.serviceSale - r.serviceCost)}
                       </th>
                     </tr>
                   </tfoot>
@@ -171,13 +167,13 @@ function ReportContent({
               Valor da OS <b>{money(r.total)}</b>
             </span>
             <span>
-              Custos <b>{money(r.productCost + r.serviceCost)}</b>
+              Custos <b>{r.missingCost ? "Custo de peças não informado" : money(r.productCost + r.serviceCost)}</b>
             </span>
             <span>
               Taxas realizadas <b>{money(r.fees)}</b>
             </span>
             <span>
-              Resultado estimado <b>{money(r.result)}</b>
+              Resultado estimado <b>{r.result === null ? "Custo não informado" : money(r.result)}</b>
             </span>
             <span>
               Margem estimada{" "}

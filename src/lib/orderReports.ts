@@ -1,5 +1,5 @@
 import type { Entity, Order, Workspace } from "./types";
-import { displayStatus, workshopDate } from "./workflow";
+import { displayStatus, workshopDate, hasMissingProductCost } from "./workflow";
 
 export type OrderFilters = {
   from: string;
@@ -13,7 +13,7 @@ export const dateBasisLabel = {
   payment: "Data de pagamento",
 };
 export const reportNote =
-  "Resultado estimado = valor da OS após desconto − custos registrados de peças e serviços de terceiros − taxas dos pagamentos realizados. Não inclui mão de obra interna, impostos ou despesas gerais. Custos ausentes são considerados zero. Peças e serviços são apresentados antes do desconto e das taxas, que são descontados uma única vez no total. O período seleciona as OS; os valores e pagamentos apresentados abrangem toda a OS, inclusive fora do período. Juros de parcelamento não são adicionados ao valor da OS. OS abertas ou canceladas não representam receita realizada.";
+  "Resultado estimado = valor da OS após desconto − custos registrados de peças e serviços de terceiros − taxas dos pagamentos realizados. Não inclui mão de obra interna, impostos ou despesas gerais. Peças com custo zero ou ausente são marcadas como custo não informado; essas OS ficam fora do total de resultado e da margem. Custos apresentados somam apenas os valores registrados. Peças e serviços são apresentados antes do desconto e das taxas, que são descontados uma única vez no total. O período seleciona as OS; os valores e pagamentos apresentados abrangem toda a OS, inclusive fora do período. Juros de parcelamento não são adicionados ao valor da OS. OS abertas ou canceladas não representam receita realizada.";
 const number = (value: unknown) => Number(value || 0);
 const date = (value: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value : workshopDate(value || "");
@@ -84,7 +84,8 @@ export function resultItem(item: Entity) {
     cost,
     sale,
     totalCost,
-    result: sale - totalCost,
+    missingCost: item.kind === "product" && !(cost > 0),
+    result: item.kind === "product" && !(cost > 0) ? null : sale - totalCost,
   };
 }
 export function orderResult(
@@ -108,9 +109,10 @@ export function orderResult(
     serviceCost = sum(services, "totalCost");
   const fees = payments.reduce((s, p) => s + p.fee, 0);
   const total = number(order.total),
-    result = total - productCost - serviceCost - fees;
+    result = hasMissingProductCost(order) ? null : total - productCost - serviceCost - fees;
   return {
     order,
+    missingCost: hasMissingProductCost(order),
     products,
     services,
     payments,
@@ -122,7 +124,7 @@ export function orderResult(
     total,
     discount: number(order.discount),
     result,
-    margin: total ? result / total : null,
+    margin: total && result !== null ? result / total : null,
   };
 }
 export type OrderResult = ReturnType<typeof orderResult>;
@@ -132,7 +134,7 @@ export function reportTotals(results: OrderResult[]) {
       total: s.total + r.total,
       cost: s.cost + r.productCost + r.serviceCost,
       fees: s.fees + r.fees,
-      result: s.result + r.result,
+      result: s.result + (r.result ?? 0),
     }),
     { total: 0, cost: 0, fees: 0, result: 0 },
   );

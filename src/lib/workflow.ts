@@ -27,6 +27,8 @@ export function filterOrders(orders: Order[], quotes: boolean, status: string) {
           : displayStatus(o) === status)),
   );
 }
+export const hasMissingProductCost = (order: Order) =>
+  order.items.some((i) => i.kind === "product" && !(Number(i.cost) > 0));
 export function revenueBreakdown(orders: Order[], from: string, to: string) {
   return orders
     .filter(
@@ -46,12 +48,17 @@ export function revenueBreakdown(orders: Order[], from: string, to: string) {
         const productCost =
           o.product_cost_total ??
           products.reduce((s, i) => s + i.cost * i.quantity, 0);
+        const serviceCost = o.items.filter((i) => i.kind === "service").reduce((total, i) => total + Number(i.cost || 0) * i.quantity, 0);
         return {
           products: sum.products + productRevenue,
           services: sum.services + o.total - productRevenue,
-          productProfit: sum.productProfit + productRevenue - productCost,
+          serviceCost: sum.serviceCost + serviceCost,
+          serviceProfit: sum.serviceProfit + o.total - productRevenue - serviceCost,
+          productProfit: sum.productProfit + (hasMissingProductCost(o) ? 0 : productRevenue - productCost),
+          productCost: sum.productCost + productCost,
+          missingCostOrders: sum.missingCostOrders + (hasMissingProductCost(o) ? 1 : 0),
         };
       },
-      { products: 0, services: 0, productProfit: 0 },
+      { products: 0, services: 0, productProfit: 0, productCost: 0, missingCostOrders: 0, serviceCost: 0, serviceProfit: 0 },
     );
 }
