@@ -23,6 +23,7 @@ export interface Workspace {
   parts_pricing?: {
     mode: "legacy" | "markup" | "margin";
     rate_bps: number;
+    service_markup_bps?: number;
     rules: {
       up_to: number | null;
       markup_bps: number;

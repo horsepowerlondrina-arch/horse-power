@@ -1,6 +1,7 @@
 import { NumericInput } from "../components/NumericInput";
 import { CapturePanel } from "../components/CapturePanel";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { catalogSalePrice } from "../../shared/pricing";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -498,6 +499,7 @@ export function RegisterModal({
       ? { cost: record.cost - (record.freight_unit || 0) }
       : {}),
   });
+  const pricingDirty = useRef(new Set<string>());
   const [withVehicle, setWithVehicle] = useState(false);
   const [vehicle, setVehicle] = useState({ ...defaults.vehicles });
   const [busy, setBusy] = useState(false);
@@ -532,7 +534,29 @@ export function RegisterModal({
         min="0"
         step="0.01"
         value={form[key] / 100}
-        onChange={(e) => set(key, Math.round(Number(e.target.value) * 100))}
+        onChange={(e) => {
+          pricingDirty.current.add(key);
+          set(key, Math.round(Number(e.target.value) * 100));
+        }}
+        onBlur={(e) => {
+          if (
+            !["cost", "freight_unit"].includes(key) ||
+            !pricingDirty.current.delete(key)
+          )
+            return;
+          if (!e.currentTarget.validity.valid || !data.parts_pricing) return;
+          try {
+            const price = catalogSalePrice(
+              form.kind,
+              form.cost,
+              form.freight_unit,
+              data.parts_pricing,
+            );
+            set("price", price);
+          } catch (error) {
+            setError((error as Error).message);
+          }
+        }}
       />
     </Field>
   );
@@ -738,12 +762,18 @@ export function RegisterModal({
                     <button
                       type="button"
                       className="text-button"
-                      onClick={async () => {
+                      onClick={() => {
                         try {
-                          const r = await send("/parts-pricing/preview", {
-                            cost: form.cost + form.freight_unit,
-                          });
-                          set("price", r.price);
+                          if (data.parts_pricing)
+                            set(
+                              "price",
+                              catalogSalePrice(
+                                form.kind,
+                                form.cost,
+                                form.freight_unit,
+                                data.parts_pricing,
+                              ),
+                            );
                         } catch (e) {
                           setError((e as Error).message);
                         }

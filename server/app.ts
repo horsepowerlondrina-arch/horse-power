@@ -143,6 +143,7 @@ const orderSchema = z.object({
         quantity: z.number().int().min(1).max(10000),
         price: integer,
         cost_override: integer.optional(),
+        refresh_catalog: z.boolean().optional(),
       }),
     )
     .max(200),
@@ -425,18 +426,12 @@ export function createApp(db: DB) {
     res.json(await listChecklists(db, res.locals.context));
   });
   app.post("/api/checklists", async (req, res) => {
-    res.status(201).json(
-      await createChecklist(db, res.locals.context, req.body),
-    );
+    res
+      .status(201)
+      .json(await createChecklist(db, res.locals.context, req.body));
   });
   app.get("/api/checklists/:id", async (req, res) => {
-    res.json(
-      await getChecklist(
-        db,
-        res.locals.context,
-        String(req.params.id),
-      ),
-    );
+    res.json(await getChecklist(db, res.locals.context, String(req.params.id)));
   });
   app.put("/api/checklists/:id", async (req, res) => {
     res.json(
@@ -450,27 +445,25 @@ export function createApp(db: DB) {
   });
   app.post("/api/checklists/:id/finalize", async (req, res) => {
     res.json(
-      await finalizeChecklist(
-        db,
-        res.locals.context,
-        String(req.params.id),
-      ),
+      await finalizeChecklist(db, res.locals.context, String(req.params.id)),
     );
   });
   app.post(
     "/api/checklists/:id/photos",
     express.raw({ type: ["image/jpeg", "image/png"], limit: "2mb" }),
     async (req, res) => {
-      res.status(201).json(
-        await addChecklistPhoto(
-          db,
-          res.locals.context,
-          String(req.params.id),
-          req.query.kind,
-          req.headers["content-type"]?.split(";")[0],
-          req.body,
-        ),
-      );
+      res
+        .status(201)
+        .json(
+          await addChecklistPhoto(
+            db,
+            res.locals.context,
+            String(req.params.id),
+            req.query.kind,
+            req.headers["content-type"]?.split(";")[0],
+            req.body,
+          ),
+        );
     },
   );
   app.delete("/api/checklists/:id/photos/:photoId", async (req, res) => {
@@ -657,7 +650,18 @@ export function createApp(db: DB) {
         .prepare(
           "UPDATE tenants SET parts_pricing_mode=?,parts_pricing_bps=?,parts_pricing_rules=? WHERE id=?",
         )
-        .run(v.mode, v.rate_bps, JSON.stringify(v.rules), ctx.tenantId);
+        .run(
+          v.mode,
+          v.rate_bps,
+          JSON.stringify({
+            rules: v.rules,
+            service_markup_bps:
+              v.service_markup_bps ??
+              (await getPartsPricing(db, ctx.tenantId)).service_markup_bps ??
+              3000,
+          }),
+          ctx.tenantId,
+        );
       await audit(db, ctx, "parts_pricing.updated", ctx.tenantId);
     });
     res.json({ ok: true });
@@ -717,11 +721,7 @@ export function createApp(db: DB) {
   app.post("/api/orders/:id/revoke-share", async (req, res) => {
     const ctx: Context = res.locals.context;
     await scoped(db, "orders", ctx.tenantId, String(req.params.id));
-    await invalidateOrderShares(
-      db,
-      ctx.tenantId,
-      String(req.params.id),
-    );
+    await invalidateOrderShares(db, ctx.tenantId, String(req.params.id));
     res.json({ ok: true });
   });
   const lookupLimits = new Map<string, { count: number; until: number }>();

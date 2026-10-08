@@ -143,7 +143,10 @@ export async function saveOrder(
           ...item,
           snapshotId: prior?.id || id(),
           kind: catalog.kind,
-          name: prior?.name || catalog.name,
+          name:
+            item.refresh_catalog === true
+              ? catalog.name
+              : prior?.name || catalog.name,
           cost: item.cost_override ?? prior?.cost ?? catalog.cost,
           professional_id: item.professional_id || null,
         };

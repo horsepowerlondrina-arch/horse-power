@@ -78,14 +78,7 @@ test("Sky freight defaults to one purchase total and is redistributed proportion
   const db = fixture();
   try {
     const batch = randomUUID();
-    const started = await beginCapture(
-      db,
-      ctx,
-      "o",
-      "session",
-      1750,
-      batch,
-    );
+    const started = await beginCapture(db, ctx, "o", "session", 1750, batch);
     assert.equal(started.freight_total, 1750);
     await importCapture(db, started.token, {
       ...product(),
@@ -103,26 +96,30 @@ test("Sky freight defaults to one purchase total and is redistributed proportion
       cost: 30000,
       quantity: 1,
     });
-    assert.deepEqual(
-      db
-        .prepare(
-          "SELECT source_cost,freight_total FROM external_captures WHERE source='sky' ORDER BY source_cost",
-        )
-        .all().map((row) => ({ ...row })),
-      [
-        { source_cost: 10000, freight_total: 438 },
-        { source_cost: 30000, freight_total: 1312 },
-      ],
-    );
+    const freightRows = db
+      .prepare(
+        "SELECT source_cost,freight_total FROM external_captures WHERE source='sky' ORDER BY source_cost",
+      )
+      .all()
+      .map((row) => ({
+        source_cost: Number(row.source_cost),
+        freight_total: Number(row.freight_total),
+      }));
     assert.equal(
-      db.prepare("SELECT count(*) n FROM order_items").get()!.n,
-      0,
+      freightRows.reduce((sum, row) => sum + row.freight_total, 0),
+      1750,
     );
+    // UUID ordering may assign the remainder cent to either item.
+    for (const row of freightRows)
+      assert.ok(
+        Math.abs(row.freight_total - (1750 * row.source_cost) / 40000) <= 0.5,
+      );
+    assert.equal(db.prepare("SELECT count(*) n FROM order_items").get()!.n, 0);
     assert.deepEqual(
       (await captureState(db, ctx, "o")).staged_items
         .map((r: any) => r.cost)
         .sort((a: number, b: number) => a - b),
-      [10438, 31312],
+      freightRows.map((row) => row.source_cost + row.freight_total),
     );
     await updateCaptureFreight(db, started.token, 2000);
     assert.deepEqual(
@@ -130,7 +127,8 @@ test("Sky freight defaults to one purchase total and is redistributed proportion
         .prepare(
           "SELECT source_cost,freight_total FROM external_captures WHERE source='sky' ORDER BY source_cost",
         )
-        .all().map((row) => ({ ...row })),
+        .all()
+        .map((row) => ({ ...row })),
       [
         { source_cost: 10000, freight_total: 500 },
         { source_cost: 30000, freight_total: 1500 },
@@ -247,7 +245,10 @@ test("discarding a capture leaves the order untouched and removes staged Sky and
       db.prepare("SELECT count(*) n FROM external_captures").get()!.n,
       0,
     );
-    assert.equal(db.prepare("SELECT count(*) n FROM service_times").get()!.n, 0);
+    assert.equal(
+      db.prepare("SELECT count(*) n FROM service_times").get()!.n,
+      0,
+    );
   } finally {
     db.close();
   }
@@ -438,7 +439,15 @@ test("extension discard removes staged captures and revokes bearer token", async
     assert.equal((await captureState(db, ctx, "o")).staged_items.length, 1);
     await discardExtensionCapture(db, target.token);
     assert.equal((await captureState(db, ctx, "o")).staged_items.length, 0);
-    await assert.rejects(() => importCapture(db, target.token, product()), /expirada/);
-    await assert.rejects(() => discardExtensionCapture(db, "invalid"), /Conecte/);
-  } finally { db.close(); }
+    await assert.rejects(
+      () => importCapture(db, target.token, product()),
+      /expirada/,
+    );
+    await assert.rejects(
+      () => discardExtensionCapture(db, "invalid"),
+      /Conecte/,
+    );
+  } finally {
+    db.close();
+  }
 });

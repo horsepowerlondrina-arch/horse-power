@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { salePrice } from "../../shared/pricing.js";
 import type { DB } from "../db/database.js";
 export const defaultRules = [
   { up_to: 2000, markup_bps: 8000, minimum_profit: 800 },
@@ -33,6 +34,7 @@ export const partsPricingSchema = z
     mode: z.enum(["legacy", "markup", "margin"]).default("legacy"),
     rate_bps: z.number().int().min(0).max(100000).default(4000),
     rules: rulesSchema.default(defaultRules),
+    service_markup_bps: z.number().int().min(0).max(100000).optional(),
   })
   .refine(
     (v) => v.mode !== "margin" || v.rate_bps < 10000,
@@ -51,17 +53,11 @@ export function priceFromCost(
   rate: number,
   rules = defaultRules,
 ) {
-  const value =
-    mode === "margin"
-      ? Math.round((cost * 10000) / (10000 - rate))
-      : mode === "markup"
-        ? Math.round((cost * (10000 + rate)) / 10000)
-        : legacyPrice(cost, rules);
-  if (!Number.isSafeInteger(value) || value < 0 || value > 100000000)
-    throw new Error(
-      "O preço calculado ultrapassa o limite permitido. Revise custo e percentual.",
-    );
-  return value;
+  return salePrice(cost, {
+    mode: mode as "legacy" | "markup" | "margin",
+    rate_bps: rate,
+    rules,
+  });
 }
 export async function getPartsPricing(db: DB, tenant: string) {
   const r = await db
@@ -69,11 +65,16 @@ export async function getPartsPricing(db: DB, tenant: string) {
       "SELECT parts_pricing_mode mode,parts_pricing_bps rate_bps,parts_pricing_rules FROM tenants WHERE id=?",
     )
     .get(tenant);
+  // Existing installations store a plain array; newer policies also store service markup.
+  const stored = r?.parts_pricing_rules
+    ? JSON.parse(r.parts_pricing_rules)
+    : defaultRules;
   return partsPricingSchema.parse({
     ...r,
-    rules: r?.parts_pricing_rules
-      ? JSON.parse(r.parts_pricing_rules)
-      : defaultRules,
+    rules: Array.isArray(stored) ? stored : stored.rules,
+    service_markup_bps: Array.isArray(stored)
+      ? 3000
+      : (stored.service_markup_bps ?? 3000),
   });
 }
 export async function workshopPrice(db: DB, tenant: string, cost: number) {

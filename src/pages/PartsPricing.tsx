@@ -6,6 +6,9 @@ import { Field, Submit } from "../components/ui";
 import { money } from "../lib/types";
 export function PartsPricing() {
   const { data, refresh, notify } = useApp();
+  const [serviceMarkup, setServiceMarkup] = useState(
+    data.parts_pricing?.service_markup_bps ?? 3000,
+  );
   const [rules, setRules] = useState(() =>
     data.parts_pricing!.rules.map((r) => ({ ...r })),
   );
@@ -31,11 +34,16 @@ export function PartsPricing() {
         try {
           await send(
             "/parts-pricing",
-            { mode: "legacy", rate_bps: 4000, rules },
+            {
+              mode: "legacy",
+              rate_bps: 4000,
+              rules,
+              service_markup_bps: serviceMarkup,
+            },
             "PUT",
           );
           await refresh();
-          notify("Política de preços das peças salva.");
+          notify("Política de preços de peças e terceiros salva.");
         } catch (e) {
           setError((e as Error).message);
         } finally {
@@ -47,7 +55,8 @@ export function PartsPricing() {
       <p className="muted">
         A base é o custo unitário mais o frete por unidade. A venda usa o maior
         valor entre o acréscimo da faixa e o ganho mínimo. A regra vale para
-        novas importações do Sky e para o botão Aplicar regra de lucro.
+        novas importações do Sky e ao confirmar custo ou frete nos cadastros.
+        Você pode ajustar o preço de venda manualmente após o cálculo.
       </p>
       <div className="table-scroll">
         <table>
@@ -143,6 +152,29 @@ export function PartsPricing() {
           </tbody>
         </table>
       </div>
+      <h3>Serviços de terceiros</h3>
+      <p className="muted">
+        Ao confirmar o custo de um serviço, o preço de venda será o custo mais
+        este percentual. Custos e preços dos atendimentos anteriores são
+        preservados.
+      </p>
+      <Field label="Acréscimo sobre o custo de terceiros (%)">
+        <NumericInput
+          type="number"
+          required
+          min="0"
+          max="1000"
+          step="0.01"
+          value={serviceMarkup / 100}
+          onChange={(e) =>
+            setServiceMarkup(Math.round(Number(e.target.value) * 100))
+          }
+        />
+      </Field>
+      <p className="muted">
+        Exemplo: custo de R$ 100,00 → venda de{" "}
+        {money(Math.round((10000 * (10000 + serviceMarkup)) / 10000))}.
+      </p>
       <h3>Simular uma peça</h3>
       <div className="form-grid">
         <Field label="Custo sem frete (R$)">

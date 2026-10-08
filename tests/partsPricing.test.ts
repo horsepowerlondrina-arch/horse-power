@@ -1,3 +1,4 @@
+import { catalogSalePrice } from "../shared/pricing";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -8,11 +9,13 @@ import {
   beginCatalogCapture,
   catalogCaptureState,
   importCapture,
+  finishCapture,
 } from "../server/services/extension";
 import {
   defaultRules,
   partsPricingSchema,
   priceFromCost,
+  getPartsPricing,
 } from "../server/services/partsPricing";
 import { createApp } from "../server/app";
 function fixture() {
@@ -69,6 +72,7 @@ test("catalog capture applies freight and tenant policy, preserves order costs a
   try {
     const order = await beginCapture(db, ctx, "o", "session", 1000);
     await importCapture(db, order.token, part());
+    await finishCapture(db, ctx, "o");
     const snapshot = db.prepare("SELECT * FROM order_items").get()!;
     assert.equal(snapshot.cost, 11000);
     assert.equal(snapshot.price, 15950);
@@ -99,8 +103,20 @@ test("catalog capture applies freight and tenant policy, preserves order costs a
       JSON.stringify([{ up_to: null, markup_bps: 10000, minimum_profit: 0 }]),
       "a",
     );
-    await importCapture(db, catalog.token, part(30000));
-    assert.equal(db.prepare("SELECT price FROM catalog").get()!.price, 61000);
+    await importCapture(db, catalog.token, {
+      ...part(30000),
+      code: "F02",
+      name: "Segunda peça",
+    });
+    const second = db
+      .prepare(
+        "SELECT cost,price,freight_unit FROM catalog WHERE name='Segunda peça'",
+      )
+      .get()!;
+    assert.equal(second.cost, 30300);
+    assert.equal(second.freight_unit, 300);
+    assert.equal(second.price, 60600);
+    assert.deepEqual(db.prepare("SELECT * FROM order_items").get(), snapshot);
     await catalogCaptureState(db, ctx, target, true);
     await assert.rejects(importCapture(db, catalog.token, part()), /expirada/);
     db.exec("UPDATE orders SET status='completed' WHERE id='o'");
@@ -192,6 +208,90 @@ test("stock receipt is atomic and idempotent, saves landed cost and sale, and re
     assert.equal(settings.status, 200);
     const preview = await call("/parts-pricing/preview", { cost: 500 });
     assert.equal((await preview.json()).price, 1300);
+  } finally {
+    await new Promise<void>((r) => app.close(() => r()));
+    db.close();
+  }
+});
+
+test("cadastro calcula venda por faixa com frete e custo de terceiros por percentual", () => {
+  const policy = {
+    mode: "legacy" as const,
+    rate_bps: 4000,
+    rules: defaultRules,
+    service_markup_bps: 3000,
+  };
+  for (const cost of [0, 500, 2000, 2001, 5000, 5001, 10000, 10001, 100001]) {
+    assert.equal(
+      catalogSalePrice("product", cost, 0, policy),
+      priceFromCost(cost, "legacy", 4000),
+    );
+  }
+  assert.equal(catalogSalePrice("product", 1900, 200, policy), 3360);
+  assert.equal(catalogSalePrice("service", 10000, 9999, policy), 13000);
+  assert.equal(catalogSalePrice("service", 12345, 0, policy), 16049);
+  assert.equal(
+    catalogSalePrice("service", 10000, 0, { ...policy, service_markup_bps: 0 }),
+    10000,
+  );
+  assert.equal(catalogSalePrice("service", 0, 0, policy), 0);
+  assert.throws(() => catalogSalePrice("service", 100000000, 0, policy));
+  assert.equal(
+    partsPricingSchema.safeParse({ service_markup_bps: -1 }).success,
+    false,
+  );
+  assert.equal(
+    partsPricingSchema.safeParse({ service_markup_bps: 100001 }).success,
+    false,
+  );
+});
+
+test("percentual de terceiros persiste por oficina e mantém compatibilidade com tabelas antigas", async () => {
+  const db = fixture(),
+    app = createApp(db).listen(0, "127.0.0.1");
+  await new Promise<void>((r) => app.once("listening", r));
+  const base = `http://127.0.0.1:${(app.address() as any).port}/api`;
+  const headers = {
+    Cookie: "hp_session=session",
+    "Content-Type": "application/json",
+  };
+  const put = (body: any) =>
+    fetch(base + "/parts-pricing", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(body),
+    });
+  try {
+    assert.equal((await getPartsPricing(db, "a")).service_markup_bps, 3000);
+    db.prepare("UPDATE tenants SET parts_pricing_rules=? WHERE id='a'").run(
+      JSON.stringify(defaultRules),
+    );
+    assert.equal((await getPartsPricing(db, "a")).service_markup_bps, 3000);
+    assert.equal(
+      (await put({ rules: defaultRules, service_markup_bps: 2750 })).status,
+      200,
+    );
+    const workspace = await (
+      await fetch(base + "/workspace", { headers })
+    ).json();
+    assert.equal(workspace.parts_pricing.service_markup_bps, 2750);
+    assert.equal((await getPartsPricing(db, "b")).service_markup_bps, 3000);
+    // Older clients saving only product rules must not reset the third-party setting.
+    assert.equal((await put({ rules: defaultRules })).status, 200);
+    assert.equal((await getPartsPricing(db, "a")).service_markup_bps, 2750);
+    const preview = await (
+      await fetch(base + "/parts-pricing/preview", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ cost: 500 }),
+      })
+    ).json();
+    assert.equal(preview.price, 1300);
+    assert.equal(
+      (await put({ rules: defaultRules, service_markup_bps: -1 })).status,
+      400,
+    );
+    assert.equal((await getPartsPricing(db, "a")).service_markup_bps, 2750);
   } finally {
     await new Promise<void>((r) => app.close(() => r()));
     db.close();

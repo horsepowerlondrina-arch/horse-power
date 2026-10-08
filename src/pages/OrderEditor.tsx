@@ -971,10 +971,10 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
           onClose={() => setEditingProduct(null)}
           additionalFields={
             <div className="info-box">
-              O cadastro é atualizado ao salvar este formulário. O custo com
-              frete também será aplicado a este produto ao salvar o atendimento.
-              O valor de venda deste atendimento continua sendo definido no
-              campo Valor unitário.
+              Ao salvar este formulário, o cadastro será atualizado e a
+              descrição, o custo com frete e o preço de venda serão aplicados a
+              este item. Salve o atendimento para gravar essas alterações na OS
+              ou no orçamento.
             </div>
           }
           onSaved={(_, values) => {
@@ -982,12 +982,19 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
               ...f,
               items: f.items.map((item) =>
                 item.id === editingProduct.itemId
-                  ? { ...item, cost: values.cost, cost_override: values.cost }
+                  ? {
+                      ...item,
+                      name: values.name,
+                      price: values.price,
+                      cost: values.cost,
+                      cost_override: values.cost,
+                      refresh_catalog: true,
+                    }
                   : item,
               ),
             }));
             notify(
-              "Cadastro e custo do produto atualizados. Salve o atendimento para gravar o custo corrigido.",
+              "Produto atualizado neste atendimento. Salve o atendimento para gravar descrição, custo e preço.",
             );
           }}
         />

@@ -568,7 +568,7 @@ export function Settings() {
           className={params.get("aba") === "pecas" ? "active" : ""}
           onClick={() => setParams({ aba: "pecas" })}
         >
-          Lucro das peças
+          Lucro de peças e terceiros
         </button>
       </div>
       {params.get("aba") === "pecas" ? (
@@ -694,7 +694,8 @@ export function Settings() {
               <h2>Extensão Horse Power para Chrome</h2>
               <p>
                 Envie peças do Sky e serviços do Tempario ao catálogo, orçamento
-                ou OS. Instale pela Chrome Web Store. As versões publicadas na loja recebem atualizações pelo Chrome.
+                ou OS. Instale pela Chrome Web Store. As versões publicadas na
+                loja recebem atualizações pelo Chrome.
               </p>
               <a
                 className="button primary"

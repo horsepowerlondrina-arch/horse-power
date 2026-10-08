@@ -556,6 +556,37 @@ test("API autentica, protege oficinas, valida entrada e revoga sessão", async (
       }),
     );
     assert.equal(correctedCost.status, 200, await correctedCost.text());
+    const product = db
+      .prepare("SELECT * FROM catalog WHERE id='a-product'")
+      .get()!;
+    const catalogEdit = await request("/catalog/a-product", "PUT", {
+      ...product,
+      name: "Peça corrigida pela API",
+      cost: 6500,
+      freight_unit: 500,
+      price: 12000,
+    });
+    assert.equal(catalogEdit.status, 200, await catalogEdit.text());
+    const catalogRefresh = await request(
+      `/orders/${costOrderId}`,
+      "PUT",
+      input({
+        items: costItems.map((item) => ({
+          ...item,
+          name: "cliente não decide o nome",
+          refresh_catalog: true,
+          cost_override: 6500,
+          price: 12000,
+        })),
+      }),
+    );
+    assert.equal(catalogRefresh.status, 200, await catalogRefresh.text());
+    const refreshed = db
+      .prepare("SELECT * FROM order_items WHERE order_id=?")
+      .get(costOrderId)!;
+    assert.equal(refreshed.name, "Peça corrigida pela API");
+    assert.equal(refreshed.price, 12000);
+    assert.equal(refreshed.cost, 6500);
     assert.equal(
       db
         .prepare("SELECT cost FROM order_items WHERE order_id=?")
@@ -1061,5 +1092,59 @@ test("produção permite login e saída nos domínios configurados e bloqueia ou
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+  }
+});
+
+test("edição explícita do cadastro atualiza descrição custo e venda só no item da OS ou orçamento escolhido", async () => {
+  const db = fixture();
+  try {
+    const os = await saveOrder(db, ctx, input());
+    const quote = await saveOrder(db, ctx, input({ status: "quote" }));
+    const untouched = await saveOrder(db, ctx, input());
+    const items = (id: string) =>
+      db.prepare("SELECT * FROM order_items WHERE order_id=?").all(id);
+    const original = { ...items(untouched)[0] };
+    db.prepare(
+      "UPDATE catalog SET name='Peça corrigida',cost=6500,price=12000 WHERE id='a-product'",
+    ).run();
+    for (const id of [os, quote]) {
+      const before = items(id)[0];
+      await saveOrder(
+        db,
+        ctx,
+        input({
+          items: items(id).map((item) => ({
+            ...item,
+            name: "nome de cliente ignorado",
+            refresh_catalog: true,
+            cost_override: 6500,
+            price: 12000,
+          })),
+        }),
+        id,
+      );
+      const saved = items(id)[0];
+      assert.equal(saved.name, "Peça corrigida");
+      assert.equal(saved.cost, 6500);
+      assert.equal(saved.price, 12000);
+      assert.equal(saved.quantity, before.quantity);
+      assert.equal(
+        db.prepare("SELECT total FROM orders WHERE id=?").get(id)!.total,
+        23500,
+      );
+      // The next ordinary save preserves the corrected snapshot.
+      await saveOrder(db, ctx, input({ items: items(id) }), id);
+      assert.equal(items(id)[0].name, "Peça corrigida");
+    }
+    assert.deepEqual({ ...items(untouched)[0] }, original);
+    db.prepare(
+      "UPDATE catalog SET name='Outra alteração',cost=9999,price=55555 WHERE id='a-product'",
+    ).run();
+    await saveOrder(db, ctx, input({ items: items(os) }), os);
+    assert.equal(items(os)[0].name, "Peça corrigida");
+    assert.equal(items(os)[0].cost, 6500);
+    assert.equal(items(os)[0].price, 12000);
+  } finally {
+    db.close();
   }
 });
