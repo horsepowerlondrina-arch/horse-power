@@ -296,10 +296,10 @@ export function CapturePanel({
             {!plateAutofill ? (
               <>
                 Para enviar a placa automaticamente,{" "}
-                <a href="/downloads/horse-power-conector.zip?v=1.3.3" download>
-                  atualize a extensão
+                <a href="https://chromewebstore.google.com/detail/ddmnjpmldgnjefjkachlpicngaphlobf" target="_blank" rel="noopener noreferrer">
+                  instale a versão da loja
                 </a>{" "}
-                e recarregue as páginas.
+                e recarregue as páginas. Se você usava o ZIP, remova a versão manual antes de instalar pela loja.
               </>
             ) : plate ? (
               <>
@@ -317,18 +317,18 @@ export function CapturePanel({
             <summary>Como instalar a extensão</summary>
             <ol>
               <li>
-                <a href="/downloads/horse-power-conector.zip?v=1.3.3" download>
-                  Baixe o Conector Horse Power
-                </a>{" "}
-                e extraia o ZIP.
-              </li>
-              <li>Abra chrome://extensions e ative o Modo do desenvolvedor.</li>
-              <li>
-                Clique em Carregar sem compactação e escolha a pasta extraída.
+                Se você instalou pelo ZIP, remova a versão manual no menu
+                Extensões → Gerenciar extensões do Chrome.
               </li>
               <li>
-                Desative a extensão antiga e recarregue Horse Power, Sky Peças e
-                Tempario.
+                <a href="https://chromewebstore.google.com/detail/ddmnjpmldgnjefjkachlpicngaphlobf" target="_blank" rel="noopener noreferrer">
+                  Abra o Horse Power na Chrome Web Store
+                </a>.
+              </li>
+              <li>Clique em Usar no Chrome e confirme Adicionar extensão.</li>
+              <li>
+                Recarregue Horse Power, Sky Peças e Tempario e conecte a captura
+                novamente.
               </li>
             </ol>
           </details>
