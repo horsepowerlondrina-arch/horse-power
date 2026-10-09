@@ -46,10 +46,10 @@ export function OrderEditor() {
     );
   return (
     <Editor
-      key={order ? `${order.id}:${order.status}` : location.pathname}
+      key={order ? `${order.id}:${order.status}` : `${location.pathname}:${location.search}`}
       order={order}
       quote={
-        order?.kind === "quote" || location.pathname.startsWith("/orcamentos")
+        order?.kind === "quote" || location.pathname.startsWith("/orcamentos") || (!order && new URLSearchParams(location.search).get("status") === "quote")
       }
     />
   );
@@ -206,6 +206,12 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     }
   };
   const transition = async () => {
+    if (!["quote", "cancelled"].includes(confirm) && (!form.customer_id || !form.vehicle_id)) {
+      setError("Informe o cliente e o veículo antes de aprovar o orçamento para execução.");
+      setTab("details");
+      setConfirm("");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -261,7 +267,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
         <button
           className="back-link"
           onClick={() =>
-            navigate(form.status === "quote" ? "/orcamentos" : "/ordens")
+            navigate("/ordens")
           }
         >
           <ArrowLeft size={16} />

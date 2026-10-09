@@ -244,3 +244,13 @@ test("parts without costs never inflate profit; service discounts and third-part
   const mixed = { ...fixed, items: [...fixed.items, { id: "unknown", kind: "product", quantity: 1, price: 1000, cost: 0 }] };
   assert.equal(orderResult(mixed, data).result, null);
 });
+
+test("unified attendance list includes anonymous quotes by status without adding them to financial reports", () => {
+  const quote = { ...order, id: "quote", kind: "quote", status: "quote", display_status: "quote", customer_id: null, vehicle_id: null, customer_name: "Cliente não informado", completed_on: "", entered_on: "2026-10-01" } as unknown as typeof order;
+  const all = { ...filters, basis: "opening" as const, from: "", to: "", statuses: [] };
+  assert.equal(selectReportOrders([order, quote], all, data, "", true).length, 2);
+  assert.deepEqual(selectReportOrders([order, quote], { ...all, statuses: ["quote"] }, data, "", true).map((o) => o.id), ["quote"]);
+  assert.equal(selectReportOrders([quote], all, data).length, 0);
+  assert.equal(selectReportOrders([quote], { ...all, basis: "completion" }, data, "", true).length, 0);
+  assert.equal(selectReportOrders([quote], { ...all, basis: "payment" }, data, "", true).length, 0);
+});

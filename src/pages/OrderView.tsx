@@ -39,6 +39,12 @@ export function OrderView() {
   };
   const action = next[order.status];
   async function transition() {
+    if (order && !["quote", "cancelled"].includes(confirm) && (!order.customer_id || !order.vehicle_id)) {
+      notify("Informe o cliente e o veículo no atendimento e depois aprove o orçamento.");
+      setConfirm("");
+      navigate(`/ordens/${id}/editar`);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -63,7 +69,7 @@ export function OrderView() {
       <button
         className="back-link no-print"
         onClick={() =>
-          navigate(order.kind === "quote" ? "/orcamentos" : "/ordens")
+          navigate("/ordens")
         }
       >
         ← Voltar à lista

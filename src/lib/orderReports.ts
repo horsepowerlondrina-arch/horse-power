@@ -44,6 +44,7 @@ export function selectReportOrders(
   filters: OrderFilters,
   data: Pick<Workspace, "receivables" | "cash" | "installments">,
   search = "",
+  includeQuotes = false,
 ) {
   const inRange = (day: string) =>
     Boolean(day) &&
@@ -51,7 +52,7 @@ export function selectReportOrders(
     (!filters.to || day <= filters.to);
   return orders.filter((o) => {
     if (
-      o.kind !== "order" ||
+      (!includeQuotes && o.kind !== "order") ||
       (filters.statuses.length && !filters.statuses.includes(displayStatus(o)))
     )
       return false;

@@ -161,8 +161,7 @@ export function App() {
       title: "PRINCIPAL",
       items: [
         ["/dashboard", "Visão geral", LayoutDashboard],
-        ["/ordens", "Ordens de serviço", ClipboardList],
-        ["/orcamentos", "Orçamentos", FileText],
+        ["/ordens", "Orçamentos e OS", ClipboardList],
         ["/checklists", "Checklists de entrada", ClipboardCheck],
       ],
     },
@@ -410,7 +409,7 @@ export function App() {
                 <Route path="/inicio" element={<Home />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/ordens" element={<Orders />} />
-                <Route path="/orcamentos" element={<Orders quotes />} />
+                <Route path="/orcamentos" element={<Navigate to="/ordens?status=quote" replace />} />
                 <Route path="/ordens/nova" element={<OrderEditor />} />
                 <Route
                   path="/ordens/:id"
@@ -421,7 +420,7 @@ export function App() {
                   path="/ordens/:id/receber"
                   element={<Payment key={location.pathname} />}
                 />
-                <Route path="/orcamentos/novo" element={<OrderEditor />} />
+                <Route path="/orcamentos/novo" element={<Navigate to="/ordens/nova?status=quote" replace />} />
                 <Route path="/checklists" element={<Checklists />} />
                 <Route path="/checklists/novo" element={<ChecklistEditor />} />
                 <Route path="/checklists/:id" element={<ChecklistEditor />} />

@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, Download, SlidersHorizontal } from "lucide-react";
+import { Plus, Download } from "lucide-react";
 import { useApp } from "../lib/context";
 import { money, statusLabel } from "../lib/types";
 import { PageHeading, SearchBox } from "../components/ui";
-import { filterOrders, displayStatus } from "../lib/workflow";
 import { OrderTable } from "../components/OrderTable";
 import { OrderResultReport } from "../components/OrderResultReport";
 import {
@@ -13,14 +12,12 @@ import {
   selectReportOrders,
   type OrderFilters,
 } from "../lib/orderReports";
-export function Orders({ quotes = false }: { quotes?: boolean }) {
+export function Orders() {
   const { data, notify, session } = useApp();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const status = params.get("status") || (quotes ? "all" : "active");
+  const status = params.get("status") || "active";
   const initialStatuses =
     status === "all"
       ? []
@@ -29,7 +26,7 @@ export function Orders({ quotes = false }: { quotes?: boolean }) {
             "open",
             "working",
             "ready",
-            ...(session.role === "owner" ? ["awaiting_payment"] : []),
+            ...(session.role === "owner" ? ["quote", "awaiting_payment"] : []),
           ]
         : status.split(",");
   const requestedBasis = params.get("basis");
@@ -51,23 +48,15 @@ export function Orders({ quotes = false }: { quotes?: boolean }) {
   }, [filterKey]);
   const [showReport, setShowReport] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const rows = quotes
-    ? filterOrders(data.orders, true, status).filter(
-        (o) =>
-          (!from || o.entered_on >= from) &&
-          (!to || o.entered_on <= to) &&
-          `${o.number} ${o.customer_name} ${o.plate} ${o.brand} ${o.model}`
-            .toLowerCase()
-            .includes(search.toLowerCase()),
-      )
-    : selectReportOrders(data.orders, filters, data, search);
-  const results = showReport ? rows.map((o) => orderResult(o, data)) : [];
+  const rows = selectReportOrders(data.orders, filters, data, search, session.role === "owner");
+  const financialRows = rows.filter((o) => o.kind === "order");
+  const results = showReport ? financialRows.map((o) => orderResult(o, data)) : [];
   const exportExcel = async () => {
     setExporting(true);
     try {
       const { downloadResults } = await import("../lib/reportWorkbook");
       downloadResults(
-        rows.map((o) => orderResult(o, data)),
+        financialRows.map((o) => orderResult(o, data)),
         filters,
         search,
         session.tenant.name,
@@ -79,140 +68,28 @@ export function Orders({ quotes = false }: { quotes?: boolean }) {
       setExporting(false);
     }
   };
-  const exportCSV = () => {
-    const escape = (v: any) =>
-      `"${String(v)
-        .replace(/^[=+@-]/, "'$&")
-        .replaceAll('"', '""')}"`;
-    const content = [
-      [
-        "Número",
-        "Cliente",
-        "Placa",
-        "Entrada",
-        "Previsão",
-        "Situação",
-        "Valor (R$)",
-      ],
-      ...rows.map((o) => [
-        o.number,
-        o.customer_name,
-        o.plate,
-        o.entered_on,
-        o.due_on,
-        statusLabel[displayStatus(o)],
-        (o.total / 100).toFixed(2),
-      ]),
-    ]
-      .map((r) => r.map(escape).join(";"))
-      .join("\r\n");
-    const url = URL.createObjectURL(
-      new Blob(["\uFEFF" + content], { type: "text/csv;charset=utf-8" }),
-    );
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `horse-power-${quotes ? "orcamentos" : "ordens"}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    notify("Consulta exportada em CSV.");
-  };
   return (
     <div className="orders-list-page">
       <PageHeading
-        eyebrow="OPERAÇÃO"
-        title={quotes ? "Orçamentos" : "Ordens de serviço"}
-        description={
-          quotes
-            ? "Da primeira conversa à aprovação. Tudo em um só lugar."
-            : "Do diagnóstico à entrega, acompanhe cada atendimento."
-        }
-        actions={
-          session.role === "owner" ? (
-            <>
-              <button
-                className="button"
-                onClick={quotes ? exportCSV : () => setShowReport(true)}
-                disabled={!quotes && !rows.length}
-              >
-                <Download size={17} />
-                {quotes ? "Exportar" : "Relatório PDF / Excel"}
-              </button>
-              <button
-                className="button primary"
-                onClick={() =>
-                  navigate(quotes ? "/orcamentos/novo" : "/ordens/nova")
-                }
-              >
-                <Plus size={18} />
-                {quotes ? "Novo orçamento" : "Nova ordem de serviço"}
-              </button>
-            </>
-          ) : undefined
-        }
+        eyebrow="ATENDIMENTO"
+        title="Orçamentos e OS"
+        description="Do orçamento à entrega, acompanhe tudo pela situação do atendimento."
+        actions={session.role === "owner" ? <>
+          <button className="button" onClick={() => setShowReport(true)} disabled={!financialRows.length}>
+            <Download size={17} />Relatório PDF / Excel
+          </button>
+          <button className="button" onClick={() => navigate("/ordens/nova?status=quote")}>
+            <Plus size={18} />Novo orçamento
+          </button>
+          <button className="button primary" onClick={() => navigate("/ordens/nova")}>
+            <Plus size={18} />Nova OS
+          </button>
+        </> : undefined}
       />
       <section className="panel">
         <div className="table-toolbar">
-          <SearchBox
-            value={search}
-            onChange={setSearch}
-            placeholder="Buscar cliente, placa ou número..."
-          />
-          {quotes && (
-            <select
-              aria-label="Filtrar situação"
-              value={status}
-              onChange={(e) => setParams({ status: e.target.value })}
-            >
-              {!quotes && (
-                <option value="active">
-                  {session.role === "owner"
-                    ? "Em andamento e a receber"
-                    : "Em andamento"}
-                </option>
-              )}
-              <option value="all">Todas as situações</option>
-              {(quotes
-                ? ["quote", "cancelled"]
-                : [
-                    "open",
-                    "working",
-                    "ready",
-                    "awaiting_payment",
-                    "completed",
-                    "cancelled",
-                  ]
-              )
-                .filter(
-                  (s) => session.role === "owner" || s !== "awaiting_payment",
-                )
-                .map((s) => (
-                  <option key={s} value={s}>
-                    {statusLabel[s]}
-                  </option>
-                ))}
-            </select>
-          )}
-          {quotes && (
-            <div className="date-filter">
-              <SlidersHorizontal size={16} />
-              <input
-                type="date"
-                aria-label="Entrada a partir de"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-              <span>até</span>
-              <input
-                type="date"
-                aria-label="Entrada até"
-                value={to}
-                min={from}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </div>
-          )}
+          <SearchBox value={search} onChange={setSearch} placeholder="Buscar cliente, placa ou número..." />
         </div>
-        {!quotes && (
           <form
             className="order-report-filters"
             onSubmit={(e) => {
@@ -275,7 +152,7 @@ export function Orders({ quotes = false }: { quotes?: boolean }) {
               </label>
             </div>
             <fieldset className="report-statuses">
-              <legend>Situação da OS</legend>
+              <legend>Situação do atendimento</legend>
               <label>
                 <input
                   type="checkbox"
@@ -285,6 +162,7 @@ export function Orders({ quotes = false }: { quotes?: boolean }) {
                 Todas
               </label>
               {[
+                ...(session.role === "owner" ? ["quote"] : []),
                 "open",
                 "working",
                 "ready",
@@ -342,11 +220,11 @@ export function Orders({ quotes = false }: { quotes?: boolean }) {
               </p>
             )}
           </form>
-        )}
+        <p className="muted">Orçamentos podem ser criados sem cliente. Para aprovar, informe cliente e veículo. O relatório financeiro considera somente as OS; o orçamento pode ser impresso no detalhe do atendimento.</p>
         <OrderTable orders={rows} />
         <div className="panel-foot">
           <span>
-            {rows.length} {quotes ? "orçamentos" : "ordens de serviço"}
+            {rows.length} atendimentos
           </span>
           {session.role === "owner" && (
             <span>

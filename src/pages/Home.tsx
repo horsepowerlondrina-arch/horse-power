@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   ClipboardList,
   ClipboardCheck,
-  FileText,
   Users,
   CarFront,
   Package,
@@ -27,15 +26,9 @@ const sections = [
         Icon: ClipboardCheck,
       },
       {
-        to: "/orcamentos",
-        title: "Orçamentos",
-        description: "Prepare propostas e acompanhe as aprovações.",
-        Icon: FileText,
-      },
-      {
         to: "/ordens",
-        title: "Ordens de serviço",
-        description: "Acompanhe os serviços e o andamento de cada veículo.",
+        title: "Orçamentos e OS",
+        description: "Prepare orçamentos e acompanhe o atendimento até a entrega.",
         Icon: ClipboardList,
       },
       {

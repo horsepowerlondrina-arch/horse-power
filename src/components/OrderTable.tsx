@@ -10,8 +10,8 @@ export function OrderTable({ orders }: { orders: Order[] }) {
   if (!orders.length)
     return (
       <Empty
-        title="Nenhuma ordem por aqui"
-        description="Crie uma ordem ou ajuste os filtros para começar."
+        title="Nenhum atendimento por aqui"
+        description="Crie um orçamento ou OS, ou ajuste os filtros para começar."
       />
     );
   return (
@@ -19,7 +19,7 @@ export function OrderTable({ orders }: { orders: Order[] }) {
       <table>
         <thead>
           <tr>
-            <th>Ordem / cliente</th>
+            <th>Atendimento / cliente</th>
             <th>Veículo</th>
             <th>Previsão de entrega</th>
             <th>Situação</th>
@@ -72,7 +72,7 @@ export function OrderTable({ orders }: { orders: Order[] }) {
               <td>
                 <button
                   className="icon-button"
-                  aria-label={`Abrir ordem ${o.number}`}
+                  aria-label={`Abrir atendimento ${o.number}`}
                   onClick={() => navigate(`/ordens/${o.id}`)}
                 >
                   <ArrowUpRight size={18} />
