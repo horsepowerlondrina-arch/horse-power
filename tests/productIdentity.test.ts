@@ -1,0 +1,44 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { createDatabase } from "../server/db/database";
+import { createApp } from "../server/app";
+import { beginCapture, importCapture, finishCapture } from "../server/services/extension";
+import { digest } from "../server/auth/session";
+import { productLabel, matchesSearch } from "../shared/productIdentity";
+test("same-name parts remain distinct by code and brand, preserve manual category and record usage without claiming fitment", async () => {
+ const db=createDatabase(":memory:");
+ db.exec("INSERT INTO tenants(id,name) VALUES('a','A'); INSERT INTO users VALUES('u','Admin','u@example.com','disabled'); INSERT INTO memberships VALUES('u','a','owner'); INSERT INTO product_categories(id,tenant_id,name,name_key) VALUES('f','a','FILTRO','filtro'),('r','a','ARREFECIMENTO','arrefecimento'); INSERT INTO orders(id,tenant_id,number,kind,status,guest_vehicle,entered_on,due_on,km,total) VALUES('o','a',1,'quote','quote','Cobalt 2014','2026-10-08','2026-10-08',0,0),('o2','a',2,'quote','quote','Uno 2015','2026-10-08','2026-10-08',0,0)");
+ db.prepare("INSERT INTO sessions VALUES(?,?,?,?)").run(digest("session"),"u","a",Date.now()+3600000);
+ const ctx={tenantId:"a",userId:"u",role:"owner"};
+ const server=createApp(db).listen(0,"127.0.0.1");await new Promise<void>((r)=>server.once("listening",r));
+ try {
+  const target=await beginCapture(db,ctx,"o","session",0,randomUUID());
+  const item={capture_id:randomUUID(),source:"sky",name:"Filtro de óleo",code:"OC506",brand:"Mahle",department:"FILTRO",application:"Cobalt 1.8 2013 a 2016",cost:3000,quantity:1};
+  await importCapture(db,target.token,item);
+  assert.equal((await importCapture(db,target.token,item)).duplicate,true);
+  await importCapture(db,target.token,{...item,capture_id:randomUUID(),brand:"Mann"});
+  await importCapture(db,target.token,{...item,capture_id:randomUUID(),brand:"Mann",code:"W712"});
+  const parts=db.prepare("SELECT * FROM catalog WHERE kind='product'").all();
+  assert.equal(parts.length,3);assert.equal(new Set(parts.map((p)=>productLabel(p))).size,3);
+  const mahle=parts.find((p)=>p.brand==="Mahle")!;
+  assert.equal(matchesSearch(productLabel(mahle) + " " + mahle.application, "filtro mahle cobalt"),true);
+  assert.equal(matchesSearch(productLabel(mahle) + " " + mahle.application, "filtro mann"),false);
+  assert.equal(mahle.category,"FILTRO");assert.equal(mahle.manufacturer_code,"OC506");assert.match(String(mahle.usage_vehicles),/Cobalt 2014/);
+  const base="http://127.0.0.1:"+(server.address() as any).port+"/api";
+  const change=await fetch(base+"/catalog/"+mahle.id+"/category",{method:"PATCH",headers:{Cookie:"hp_session=session","Content-Type":"application/json"},body:JSON.stringify({category:"ARREFECIMENTO"})});
+  assert.equal(change.status,200);
+  await importCapture(db,target.token,{...item,capture_id:randomUUID()});
+  assert.equal(db.prepare("SELECT category FROM catalog WHERE id=?").get(mahle.id)!.category,"ARREFECIMENTO");
+  const invalid=await fetch(base+"/catalog/"+mahle.id+"/category",{method:"PATCH",headers:{Cookie:"hp_session=session","Content-Type":"application/json"},body:JSON.stringify({category:"Inventada"})});
+  assert.equal(invalid.status,400);
+  await finishCapture(db,ctx,"o");
+  const names=db.prepare("SELECT name FROM order_items WHERE order_id='o'").all();
+  assert.ok(names.some((p)=>String(p.name).includes("Mahle")&&String(p.name).includes("OC506")));
+  const second=await beginCapture(db,ctx,"o2","session",0,randomUUID());
+  await importCapture(db,second.token,{capture_id:randomUUID(),source:"sky",name:item.name,code:item.code,brand:item.brand,cost:3100});
+  const updated=db.prepare("SELECT * FROM catalog WHERE id=?").get(mahle.id)!;
+  assert.match(String(updated.usage_vehicles),/Cobalt 2014/);assert.match(String(updated.usage_vehicles),/Uno 2015/);
+  assert.equal(updated.application,item.application);assert.equal(db.prepare("SELECT count(*) n FROM catalog").get()!.n,3);
+ } finally {await new Promise<void>((r,reject)=>server.close((e)=>e?reject(e):r()));db.close();}
+});

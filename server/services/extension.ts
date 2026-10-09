@@ -1,3 +1,4 @@
+import { categoryKey, productLabel } from "../../shared/productIdentity.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { type DB, transaction } from "../db/database.js";
@@ -14,6 +15,8 @@ export const captureSchema = z
     name: z.string().trim().min(3).max(300),
     code: txt,
     brand: txt,
+    department: txt.optional(),
+    application: txt.optional(),
     quantity: z.number().int().min(1).max(1000).default(1),
     cost: z.number().int().min(0).max(100000000).default(0),
     price: z.number().int().min(0).max(100000000).default(0),
@@ -267,7 +270,7 @@ export async function captureState(db: DB, ctx: Context, orderId: string) {
   const stagedItems = session?.batch_id
     ? await db
         .prepare(
-          `SELECT e.id,e.catalog_id,c.kind,c.name,e.source_quantity quantity,e.source_price price,
+          `SELECT e.id,e.catalog_id,c.kind,c.name,c.brand,c.manufacturer_code,c.application,c.usage_vehicles,c.category,e.source_quantity quantity,e.source_price price,
              CASE
                WHEN e.source='sky' THEN e.source_cost + CAST(ROUND(e.freight_total * 1.0 / e.source_quantity) AS INTEGER)
                ELSE c.cost
@@ -419,7 +422,7 @@ export async function finishCapture(db: DB, ctx: Context, orderId: string) {
     if (session?.batch_id) {
       const staged = await db
         .prepare(
-          `SELECT e.*,c.kind,c.name,c.cost catalog_cost
+          `SELECT e.*,c.kind,c.name,c.brand,c.manufacturer_code,c.cost catalog_cost
            FROM external_captures e
            JOIN catalog c ON c.id=e.catalog_id AND c.tenant_id=e.tenant_id
            WHERE e.tenant_id=? AND e.order_id=? AND e.batch_id=? AND e.item_id IS NULL
@@ -470,7 +473,7 @@ export async function finishCapture(db: DB, ctx: Context, orderId: string) {
             orderId,
             capture.catalog_id,
             capture.kind,
-            capture.name,
+            capture.kind === "product" ? productLabel(capture) : capture.name,
             quantity,
             price,
             landedCost,
@@ -645,6 +648,17 @@ export async function importCapture(db: DB, token: string, input: unknown) {
           v.source === "sky" ? 1 : 0,
         );
       catalog = await scoped(db, "catalog", ctx.tenantId, catalogId);
+    }
+    if (v.source === "sky") {
+      const contextVehicle = vehicle ? [vehicle.brand,vehicle.model,vehicle.year].filter(Boolean).join(" · ") : String(order?.guest_vehicle || "");
+      const usage = [...new Set([...(String(catalog.usage_vehicles || "").split("\n").filter(Boolean)),...(contextVehicle ? [contextVehicle] : [])])].slice(-20).join("\n");
+      await db.prepare("UPDATE catalog SET brand=CASE WHEN brand='' THEN ? ELSE brand END,manufacturer_code=CASE WHEN manufacturer_code='' THEN ? ELSE manufacturer_code END,application=CASE WHEN application='' THEN ? ELSE application END,usage_vehicles=? WHERE tenant_id=? AND id=?")
+        .run(v.brand,v.code,v.application || "",usage,ctx.tenantId,catalog.id);
+      if (v.department) {
+        const matches = (await db.prepare("SELECT * FROM product_categories WHERE tenant_id=? AND active=1").all(ctx.tenantId)).filter((c) => categoryKey(c.name)===categoryKey(v.department!));
+        if (matches.length===1) await db.prepare("UPDATE catalog SET category=? WHERE tenant_id=? AND id=? AND category_confirmed=0").run(matches[0].name,ctx.tenantId,catalog.id);
+      }
+      catalog = await scoped(db,"catalog",ctx.tenantId,catalog.id);
     }
     if (v.source === "sky" && !order) {
       await db

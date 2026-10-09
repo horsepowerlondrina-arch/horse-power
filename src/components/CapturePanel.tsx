@@ -1,3 +1,5 @@
+import { useApp } from "../lib/context";
+import { productLabel, productDetails } from "../../shared/productIdentity";
 import { NumericInput } from "./NumericInput";
 import { useEffect, useRef, useState } from "react";
 import { api, send } from "../lib/api";
@@ -16,6 +18,8 @@ export function CapturePanel({
   source: "sky" | "tempario";
   onClose: (items: Entity[], committed: boolean) => Promise<void>;
 }) {
+  const { data } = useApp();
+  const [categoryBusy, setCategoryBusy] = useState(false);
   const [catalogId] = useState(() => crypto.randomUUID());
   const [batchId] = useState(() => crypto.randomUUID());
   const freightEditing = useRef(false);
@@ -166,7 +170,7 @@ export function CapturePanel({
     }
   }
   async function complete() {
-    if (busy) return;
+    if (busy || categoryBusy) return;
     setBusy(true);
     setError("");
     try {
@@ -346,7 +350,8 @@ export function CapturePanel({
           {(catalog ? items : stagedItems).map((i) => (
             <div key={i.id} className="capture-list-row">
               <span className="capture-item-main">
-                <strong>{i.name}</strong>
+                <strong>{i.kind === "product" ? productLabel(i) : i.name}</strong>
+                {i.kind === "product" && productDetails(i) && <small>{productDetails(i)}</small>}
                 <small>
                   {i.capture_source === "sky"
                     ? "Sky Peças"
@@ -354,6 +359,21 @@ export function CapturePanel({
                       ? "Tempario"
                       : "Catálogo"}
                 </small>
+              {i.capture_source === "sky" && <label className="capture-inline-field">
+                <span>Categoria</span>
+                <select aria-label={`Categoria de ${i.name}`} value={i.category || ""} disabled={busy || categoryBusy} onChange={async (e) => {
+                  const category = e.target.value;
+                  setCategoryBusy(true);setError("");editingCapture.current=i.id;
+                  try {
+                    await send("/catalog/" + (i.catalog_id || i.id) + "/category",{category},"PATCH");
+                    const state=await api(stateUrl);setItems(state.items);setStagedItems(state.staged_items || []);
+                  } catch(e) {setError((e as Error).message);} finally {setCategoryBusy(false);editingCapture.current=null;}
+                }}>
+                  <option value="">Sem categoria</option>
+                  {!!i.category && !(data.product_categories || []).some((c) => c.active && c.name===i.category) && <option value={i.category} disabled>{i.category} (anterior)</option>}
+                  {(data.product_categories || []).filter((c) => c.active).map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+              </label>}
               </span>
               {!catalog && i.capture_source === "sky" ? (
                 <label className="capture-inline-field">
@@ -459,7 +479,7 @@ export function CapturePanel({
         <button
           type="button"
           className="button primary"
-          disabled={busy}
+          disabled={busy || categoryBusy}
           onClick={() => void complete()}
         >
           {busy ? "Aguarde…" : "Concluir captura"}

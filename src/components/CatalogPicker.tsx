@@ -1,3 +1,4 @@
+import { productLabel, productDetails } from "../../shared/productIdentity";
 import { useId, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { money, type Entity } from "../lib/types";
@@ -28,7 +29,7 @@ export function CatalogPicker({
   const matches = items.filter((item) =>
     words.every((word) =>
       normalize(
-        `${item.name} ${item.sku} ${item.category} ${item.search_aliases || ""}`,
+        `${item.name} ${item.sku} ${item.brand || ""} ${item.manufacturer_code || ""} ${item.application || ""} ${item.usage_vehicles || ""} ${item.category} ${item.search_aliases || ""}`,
       ).includes(word),
     ),
   );
@@ -128,7 +129,8 @@ export function CatalogPicker({
                 onMouseEnter={() => setActive(index)}
               >
                 <div>
-                  <strong>{item.name}</strong>
+                  <strong>{kind === "product" ? productLabel(item) : item.name}</strong>
+                  {kind === "product" && productDetails(item) && <small>{productDetails(item)}</small>}
                   <small>
                     {item.sku}
                     {kind === "product"

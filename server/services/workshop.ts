@@ -1,3 +1,4 @@
+import { productLabel } from "../../shared/productIdentity.js";
 import { randomUUID } from "node:crypto";
 import { transaction, type DB } from "../db/database.js";
 import type { Context } from "../auth/session.js";
@@ -145,8 +146,8 @@ export async function saveOrder(
           kind: catalog.kind,
           name:
             item.refresh_catalog === true
-              ? catalog.name
-              : prior?.name || catalog.name,
+              ? (catalog.kind === "product" ? productLabel(catalog) : catalog.name)
+              : prior?.name || (catalog.kind === "product" ? productLabel(catalog) : catalog.name),
           cost: item.cost_override ?? prior?.cost ?? catalog.cost,
           professional_id: item.professional_id || null,
         };

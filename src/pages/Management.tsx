@@ -706,6 +706,8 @@ export function Settings() {
                 <Download size={16} />
                 Instalar pela Chrome Web Store
               </a>
+              <p>Pacote 1.4.0: captura de departamento e aplicação explícita das peças. A atualização automática depende da publicação dessa versão na loja.</p>
+              <a className="button" href="/downloads/horse-power-conector.zip" download>Baixar pacote 1.4.0 (.zip)</a>
             </section>
             <section className="panel settings-card full">
               <Layers3 size={23} />

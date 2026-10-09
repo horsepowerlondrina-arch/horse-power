@@ -66,6 +66,19 @@
       " ",
     );
     const lines = raw.split(/\n+/).map(norm).filter(Boolean);
+    const departmentLabel = raw.match(/^Departamento\s*:\s*(.+)$/im);
+    let department = departmentLabel ? norm(departmentLabel[1]) : "";
+    if (!department && typeof document !== "undefined") {
+      const choices = new Set();
+      for (const select of document.querySelectorAll("select")) {
+        if (upper(text(select.options?.[0])) !== "DEPARTAMENTOS" || select.selectedIndex <= 0 || select.multiple) continue;
+        const label = text(select.options[select.selectedIndex]);
+        if (label && upper(label)!=="DEPARTAMENTOS") choices.add(label);
+      }
+      if (choices.size === 1) department = [...choices][0];
+    }
+    const applicationMatch = raw.match(/^Aplica(?:ç|c)(?:ão|ao|ões|oes)\s*:\s*(.+)$/im);
+    const application = applicationMatch ? norm(applicationMatch[1]).slice(0,300) : "";
 
     const cm = raw.match(/C[oó]d\.?\s*F[aá]b\s*:\s*([A-Z0-9._\/-]+)/i);
     const code = cm ? cm[1].trim() : "";
@@ -83,7 +96,7 @@
       for (let i = codeIdx + 1; i < Math.min(lines.length, codeIdx + 7); i++) {
         const l = lines[i];
         if (
-          /^(N\/N|C[oó]d\.?\s*Aux|R\$|Estoque|Aplicação|Similar|Informações|\+?\s*Adicionar)/i.test(
+          /^(N\/N|C[oó]d\.?\s*Aux|R\$|Estoque|Departamento|Aplicação|Similar|Informações|\+?\s*Adicionar)/i.test(
             l,
           )
         )
@@ -123,6 +136,8 @@
       nn,
       description,
       brand,
+      department,
+      application,
       unitCost: price,
       qty: 1,
       stock,
@@ -139,6 +154,8 @@
       name: item.description,
       code: item.code,
       brand: item.brand,
+      department: item.department,
+      application: item.application,
       quantity: item.qty,
       cost: Math.round(item.unitCost * 100),
       price: 0,

@@ -113,6 +113,9 @@ const schemas = {
     name,
     sku: z.string().trim().min(1).max(40),
     category: text,
+    brand: z.string().trim().max(300).optional(),
+    manufacturer_code: z.string().trim().max(300).optional(),
+    application: z.string().trim().max(1000).optional(),
     cost: integer,
     price: integer,
     stock: integer,
@@ -1014,6 +1017,19 @@ export function createApp(db: DB) {
     );
     res.json({ ok: true });
   });
+  app.patch("/api/catalog/:id/category", async (req, res) => {
+    const ctx = res.locals.context;
+    requireAdmin(ctx);
+    const value = z.object({category:z.string().trim().max(100)}).parse(req.body);
+    await transaction(db,async () => {
+      const item=await scoped(db,"catalog",ctx.tenantId,String(req.params.id));
+      if(item.kind!=="product" || item.archived_at || item.merged_into) throw new Error("Escolha um produto disponível.");
+      const category=await validProductCategory(db,ctx,value.category);
+      await db.prepare("UPDATE catalog SET category=?,category_confirmed=1 WHERE tenant_id=? AND id=?").run(category,ctx.tenantId,item.id);
+      await audit(db,ctx,"catalog.category",item.id);
+    });
+    res.json({ok:true});
+  });
   const productCategorySchema = z.object({ name: z.string().trim().min(1).max(100), request_id: z.string().uuid().optional() });
   app.get("/api/product-categories", async (_req, res) => res.json(await listProductCategories(db, res.locals.context)));
   app.post("/api/product-categories", async (req, res) => {
@@ -1064,7 +1080,10 @@ export function createApp(db: DB) {
             );
         }
         if (table === "catalog") {
-          if (input.kind === "product") input.category = await validProductCategory(db, ctx, input.category, old?.category);
+          if (input.kind === "product") {
+            input.category = await validProductCategory(db, ctx, input.category, old?.category);
+            input.category_confirmed = 1;
+          }
           if (input.freight_unit > input.cost)
             throw new Error("O custo total deve incluir o frete.");
           if (input.kind === "service") input.freight_unit = 0;

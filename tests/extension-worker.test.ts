@@ -377,3 +377,21 @@ test("minimizing and restoring panels preserves content and sends no connection 
     assert.ok(readFileSync(`extension/horse-power/${source}.js`, "utf8").includes("window.hpMinimizePanel(d)"));
   }
 });
+
+test("Sky captures explicit application and only an unambiguous selected department", () => {
+ const source=readFileSync("extension/horse-power/sky.js","utf8");
+ const scope:any={crypto:{randomUUID},location:{href:"https://cliente.skypecas.com.br/"},document:{querySelectorAll:()=>[{options:[{textContent:"Departamentos"},{textContent:"FILTRO"}],selectedIndex:1,multiple:false}]}};
+ const helpers=source.slice(source.search(/const norm\s*=/),source.indexOf("function getProductContainers"));
+ const parser=source.slice(source.indexOf("function extractProduct"),source.indexOf("async function addItem"));
+ runInNewContext(helpers+parser+";this.parseProduct=extractProduct;",scope);
+ const raw="Cód. Fáb: OC506\nFiltro de óleo\nMahle\nAplicação: Cobalt 1.8 2013 a 2016\nEstoque: 5\nR$ 30,00/UN";
+ const item=scope.parseProduct({innerText:raw});
+ assert.equal(item.brand,"Mahle");assert.equal(item.code,"OC506");
+ assert.equal(item.department,"FILTRO");assert.equal(item.application,"Cobalt 1.8 2013 a 2016");
+ scope.document.querySelectorAll=()=>[
+ {options:[{textContent:"Departamentos"},{textContent:"FILTRO"}],selectedIndex:1},
+ {options:[{textContent:"Departamentos"},{textContent:"MOTOR"}],selectedIndex:1},
+ ];
+ assert.equal(scope.parseProduct({innerText:raw}).department,"");
+ assert.equal(scope.parseProduct({innerText:raw.replace("Aplicação: Cobalt 1.8 2013 a 2016","")}).application,"");
+});

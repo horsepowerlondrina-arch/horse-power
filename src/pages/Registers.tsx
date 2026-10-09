@@ -1,3 +1,4 @@
+import { productLabel, productDetails, matchesSearch } from "../../shared/productIdentity";
 import { ProductCategories } from "../components/ProductCategories";
 import { NumericInput } from "../components/NumericInput";
 import { CapturePanel } from "../components/CapturePanel";
@@ -69,7 +70,7 @@ export function Registers({ kind }: { kind: Kind }) {
     (r) =>
       (filter === "all" || (filter === "active" ? r.active : !r.active)) &&
       (kind !== "catalog" || type === "all" || r.kind === type) &&
-      [
+      matchesSearch([
         r.name,
         r.search_aliases,
         r.plate,
@@ -79,11 +80,12 @@ export function Registers({ kind }: { kind: Kind }) {
         r.phone,
         r.email,
         r.sku,
+        r.brand,
+        r.manufacturer_code,
+        r.application,
+        r.usage_vehicles,
         r.category,
-      ]
-        .join(" ")
-        .toLocaleLowerCase()
-        .includes(search.toLocaleLowerCase()),
+      ].join(" "), search),
   );
   return (
     <>
@@ -238,7 +240,7 @@ export function Registers({ kind }: { kind: Kind }) {
                                 className="cell-link"
                                 onClick={() => setEditing(r)}
                               >
-                                {r.name}
+                                {r.kind === "product" ? productLabel(r) : r.name}
                               </button>
                               <small>{r.document || "Pessoa / empresa"}</small>
                             </div>
@@ -305,10 +307,10 @@ export function Registers({ kind }: { kind: Kind }) {
                                 className="cell-link"
                                 onClick={() => setEditing(r)}
                               >
-                                {r.name}
+                                {r.kind === "product" ? productLabel(r) : r.name}
                               </button>
                               <small>
-                                {r.kind === "product" ? "Produto" : "Serviço"}
+                                {r.kind === "product" ? productDetails(r) || "Produto" : "Serviço"}
                                 {!r.active ? " · Inativo" : ""}
                               </small>
                             </div>
@@ -480,6 +482,9 @@ export function RegisterModal({
       name: "",
       sku: `HP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       category: "",
+      brand: "",
+      manufacturer_code: "",
+      application: "",
       cost: 0,
       freight_unit: 0,
       price: 0,
@@ -747,6 +752,12 @@ export function RegisterModal({
                 </Field>
                 {input("sku", "Referência *", "text", true)}
                 {input("name", "Descrição *", "text", true, true)}
+                {form.kind === "product" && <>
+                  {input("brand", "Marca / fabricante")}
+                  {input("manufacturer_code", "Código do fabricante")}
+                  {input("application", "Aplicação informada pelo fabricante", "text", false, true)}
+                  {!!form.usage_vehicles && <p className="muted full">Utilizada em: {String(form.usage_vehicles).replaceAll("\n","; ")}. O uso anterior não confirma compatibilidade.</p>}
+                </>}
                 {form.kind === "product" ? (
                   <Field label="Categoria" full>
                     <select value={form.category} onChange={(e) => set("category", e.target.value)}>
