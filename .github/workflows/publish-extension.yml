@@ -2,7 +2,7 @@ name: Publicar extensão Horse Power
 on:
   push:
     branches: [main]
-    paths: [extension/horse-power/manifest.json, .github/workflows/publish-extension.yml]
+    paths: [extension/horse-power/manifest.json, public/downloads/horse-power-conector.zip, .github/workflows/publish-extension.yml]
   workflow_dispatch:
 permissions:
   contents: read
