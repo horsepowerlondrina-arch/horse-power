@@ -1,0 +1,45 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { createDatabase } from "../server/db/database";
+import { createApp } from "../server/app";
+import { digest } from "../server/auth/session";
+import { postgresSql } from "../server/db/postgres";
+test("product categories enforce the list, isolate tenants and preserve products on rename/removal", async () => {
+ const db=createDatabase(":memory:");
+ db.exec("INSERT INTO tenants(id,name) VALUES('a','A'),('b','B'); INSERT INTO users VALUES('u','Admin','a@example.com','disabled'),('m','Mecânico','m@example.com','disabled'); INSERT INTO memberships VALUES('u','a','owner'),('m','a','operator');");
+ for(const [token,user] of [["owner","u"],["mechanic","m"]]) db.prepare("INSERT INTO sessions VALUES(?,?,?,?)").run(digest(token),user,"a",Date.now()+3600000);
+ db.prepare("INSERT INTO product_categories(id,tenant_id,name,name_key) VALUES('foreign','b','Privada','privada')").run();
+ const server=createApp(db).listen(0,"127.0.0.1");
+ await new Promise<void>((r)=>server.once("listening",r));
+ const base="http://127.0.0.1:"+(server.address() as any).port+"/api";
+ const call=(path:string,body:any={},method="POST",token="owner")=>fetch(base+path,{method,headers:{Cookie:"hp_session="+token,"Content-Type":"application/json"},...(method==="GET"?{}:{body:JSON.stringify(body)})});
+ try {
+   const request_id=randomUUID();
+   const r=await call("/product-categories",{name:"Filtros",request_id}); assert.equal(r.status,201); const category=(await r.json()).id;
+   assert.equal((await call("/product-categories",{name:"Filtros",request_id})).status,201);
+   assert.equal((await call("/product-categories",{name:"  filtros  "})).status,400);
+   assert.equal((await call("/product-categories",{name:"Negada"},"POST","mechanic")).status,403);
+   assert.equal((await call("/product-categories/foreign",{name:"Outro"},"PUT")).status,404);
+   const product={kind:"product",name:"Filtro de óleo",sku:"P1",category:"Livre",cost:1000,price:2000,stock:0,minimum_stock:0,active:1};
+   assert.equal((await call("/catalog",product)).status,400);
+   assert.equal((await call("/catalog",{...product,category:"Privada"})).status,400);
+   const created=await call("/catalog",{...product,category:"filtros"});assert.equal(created.status,200);const item=(await created.json()).id;
+   assert.equal(db.prepare("SELECT category FROM catalog WHERE id=?").get(item)!.category,"Filtros");
+   assert.equal((await call("/product-categories/"+category,{name:"Filtros e lubrificantes"},"PUT")).status,200);
+   assert.equal(db.prepare("SELECT category,cost FROM catalog WHERE id=?").get(item)!.category,"Filtros e lubrificantes");
+   assert.equal(db.prepare("SELECT cost FROM catalog WHERE id=?").get(item)!.cost,1000);
+   assert.equal((await call("/product-categories/"+category,{},"DELETE")).status,200);
+   assert.equal(db.prepare("SELECT category FROM catalog WHERE id=?").get(item)!.category,"Filtros e lubrificantes");
+   assert.equal((await call("/catalog",{...product,sku:"P2",category:"Filtros e lubrificantes"})).status,400);
+   assert.equal((await call("/catalog/"+item,{...product,category:"Filtros e lubrificantes",price:2500},"PUT")).status,200);
+   assert.equal((await call("/catalog",{...product,sku:"P3",category:""})).status,200);
+   assert.equal((await call("/product-categories",{name:"Filtros e lubrificantes"})).status,201);
+   const workspace=await (await call("/workspace",{},"GET")).json();
+   assert.equal(workspace.product_categories.length,1);
+   assert.equal(workspace.product_categories[0].active,1);
+   const mechanic=await (await call("/workspace",{},"GET","mechanic")).json();
+   assert.equal(mechanic.product_categories,undefined);
+   assert.match(postgresSql("SELECT * FROM product_categories WHERE tenant_id=?"),/horse_power.product_categories/);
+ } finally { await new Promise<void>((r,reject)=>server.close((e)=>e?reject(e):r()));db.close(); }
+});

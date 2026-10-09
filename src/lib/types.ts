@@ -34,6 +34,7 @@ export interface Workspace {
   customers: Entity[];
   vehicles: Entity[];
   catalog: Entity[];
+  product_categories?: Entity[];
   professionals: Entity[];
   orders: Order[];
   receivables: Entity[];

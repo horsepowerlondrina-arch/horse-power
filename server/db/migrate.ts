@@ -15,6 +15,7 @@ export function migrate(db: DatabaseSync) {
     [12, "012-vehicle-entry-checklists.sql"],
     [13, "013-checklist-plate-first.sql"],
     [14, "014-cash-control-recurring.sql"],
+    [15, "015-product-categories.sql"],
   ] as const) {
     if (db.prepare("SELECT 1 FROM migrations WHERE version=?").get(version))
       continue;

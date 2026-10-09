@@ -639,7 +639,7 @@ export async function importCapture(db: DB, token: string, input: unknown) {
           v.source === "sky" ? "product" : "service",
           v.name,
           `EXT-${catalogId.slice(0, 12)}`,
-          v.source === "sky" ? "Sky Peças" : "Tempario",
+          v.source === "sky" ? "" : "Tempario",
           landedCost,
           price,
           v.source === "sky" ? 1 : 0,

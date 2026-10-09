@@ -15,6 +15,7 @@ import {
   updateCaptureFreight,
   updateStagedCaptureItem,
 } from "./services/extension.js";
+import { listProductCategories, saveProductCategory, removeProductCategory, validProductCategory } from "./services/productCategories.js";
 import { assertUniqueService } from "./services/serviceCatalog.js";
 import { generateExpenses, payExpense } from "./services/expenses.js";
 import { createShare, readShare } from "./services/sharing.js";
@@ -397,6 +398,7 @@ export function createApp(db: DB) {
           "SELECT v.*,c.name customer_name FROM vehicles v JOIN customers c ON c.id=v.customer_id AND c.tenant_id=v.tenant_id WHERE v.tenant_id=? ORDER BY v.plate",
         )
         .all(tenant),
+      product_categories: await listProductCategories(db, res.locals.context),
       catalog: await db
         .prepare(
           "SELECT c.*,(SELECT group_concat(a.alias,' ') FROM service_aliases a WHERE a.tenant_id=c.tenant_id AND a.catalog_id=c.id) search_aliases FROM catalog c WHERE c.tenant_id=? AND c.merged_into IS NULL AND c.archived_at IS NULL ORDER BY c.name",
@@ -1012,6 +1014,20 @@ export function createApp(db: DB) {
     );
     res.json({ ok: true });
   });
+  const productCategorySchema = z.object({ name: z.string().trim().min(1).max(100), request_id: z.string().uuid().optional() });
+  app.get("/api/product-categories", async (_req, res) => res.json(await listProductCategories(db, res.locals.context)));
+  app.post("/api/product-categories", async (req, res) => {
+    const value = productCategorySchema.parse(req.body);
+    res.status(201).json({ id: await saveProductCategory(db, res.locals.context, value) });
+  });
+  app.put("/api/product-categories/:id", async (req, res) => {
+    const value = productCategorySchema.parse(req.body);
+    res.json({ id: await saveProductCategory(db, res.locals.context, value, String(req.params.id)) });
+  });
+  app.delete("/api/product-categories/:id", async (req, res) => {
+    await removeProductCategory(db, res.locals.context, String(req.params.id));
+    res.json({ ok: true });
+  });
   for (const table of [
     "customers",
     "vehicles",
@@ -1048,6 +1064,7 @@ export function createApp(db: DB) {
             );
         }
         if (table === "catalog") {
+          if (input.kind === "product") input.category = await validProductCategory(db, ctx, input.category, old?.category);
           if (input.freight_unit > input.cost)
             throw new Error("O custo total deve incluir o frete.");
           if (input.kind === "service") input.freight_unit = 0;

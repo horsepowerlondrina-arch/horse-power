@@ -29,6 +29,7 @@ export function postgresSql(input: string) {
     "vehicles",
     "professionals",
     "catalog",
+    "product_categories",
     "orders",
     "order_items",
     "stock_movements",

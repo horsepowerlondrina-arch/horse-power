@@ -1,3 +1,4 @@
+import { ProductCategories } from "../components/ProductCategories";
 import { NumericInput } from "../components/NumericInput";
 import { CapturePanel } from "../components/CapturePanel";
 import { useRef, useState, type ReactNode } from "react";
@@ -61,6 +62,7 @@ export function Registers({ kind }: { kind: Kind }) {
   const [type, setType] = useState("product");
   const [editing, setEditing] = useState<Entity | null | undefined>();
   const c = config[kind];
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [capture, setCapture] = useState<"sky" | "tempario" | null>(null);
   const Icon = c.icon;
   const rows = data[kind].filter(
@@ -123,6 +125,7 @@ export function Registers({ kind }: { kind: Kind }) {
       />
       {kind === "catalog" && (
         <div className="capture-actions">
+          <button className="button" onClick={() => setCategoriesOpen(true)}>Editar categorias</button>
           <button className="button" onClick={() => setCapture("sky")}>
             Importar produto do Sky
           </button>
@@ -134,6 +137,7 @@ export function Registers({ kind }: { kind: Kind }) {
           </Link>
         </div>
       )}
+      {categoriesOpen && <ProductCategories onClose={() => setCategoriesOpen(false)} />}
       {capture && (
         <CapturePanel
           catalog
@@ -743,7 +747,16 @@ export function RegisterModal({
                 </Field>
                 {input("sku", "Referência *", "text", true)}
                 {input("name", "Descrição *", "text", true, true)}
-                {input("category", "Categoria", "text", false, true)}
+                {form.kind === "product" ? (
+                  <Field label="Categoria" full>
+                    <select value={form.category} onChange={(e) => set("category", e.target.value)}>
+                      <option value="">Sem categoria</option>
+                      {!!form.category && !(data.product_categories || []).some((c) => c.active && c.name === form.category) && <option value={form.category} disabled>{form.category} (categoria anterior)</option>}
+                      {(data.product_categories || []).filter((c) => c.active).map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <small>Escolha uma categoria da lista. Gerencie as opções em Produtos e serviços → Editar categorias.</small>
+                  </Field>
+                ) : input("category", "Categoria", "text", false, true)}
                 {moneyInput(
                   "cost",
                   form.kind === "service"
