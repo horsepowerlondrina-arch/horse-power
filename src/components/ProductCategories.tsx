@@ -21,7 +21,7 @@ export function ProductCategories({ onClose }: { onClose: () => void }) {
     catch (e) { setError((e as Error).message); return false; }
     finally { setBusy(false); }
   };
-  return <Modal title="Categorias de produtos" description="Use os departamentos do Sky Peças como base e ajuste a lista da oficina." onClose={() => !busy && onClose()}>
+  return <Modal title="Categorias de produtos" description=" " onClose={() => !busy && onClose()}>
     <div className="modal-body">
       <p>Renomear atualiza a categoria dos produtos vinculados. Remover retira a opção de novos cadastros e preserva as informações dos produtos existentes.</p>
       {error && <p className="error" role="alert">{error}</p>}
