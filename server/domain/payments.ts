@@ -13,6 +13,7 @@ export type PaymentInput = {
   interest_bps: number;
   first_due_on: string;
   pass_card_fee?: boolean;
+  sale_on?: string;
 };
 export function addMonthsClamped(date: string, months: number) {
   const [y, m, d] = date.split("-").map(Number);

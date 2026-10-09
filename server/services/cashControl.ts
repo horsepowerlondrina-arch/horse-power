@@ -17,6 +17,7 @@ export async function cashAccount(
   ctx: Context,
   accountId: string | undefined,
   day: string,
+  scheduled = false,
 ) {
   if (!accountId) {
     const existing = await db
@@ -31,7 +32,7 @@ export async function cashAccount(
   const account = await scoped(db, "cash_accounts", ctx.tenantId, accountId);
   if (!account.active)
     throw new Error("Esta conta está pausada. Escolha uma conta ativa.");
-  if (day < account.opening_on || day > cashToday())
+  if (day < account.opening_on || (!scheduled && day > cashToday()))
     throw new Error(
       "A data deve estar entre o início do controle da conta e hoje.",
     );
@@ -67,9 +68,9 @@ export async function cashControl(db: DB, ctx: Context) {
   requireAdmin(ctx);
   const accounts = await db
     .prepare(
-      "SELECT a.*,a.opening_balance+COALESCE((SELECT SUM(m.amount) FROM cash_movements m WHERE m.tenant_id=a.tenant_id AND m.account_id=a.id),0) balance FROM cash_accounts a WHERE a.tenant_id=? ORDER BY a.kind,a.name",
+      "SELECT a.*,a.opening_balance+COALESCE((SELECT SUM(m.amount) FROM cash_movements m WHERE m.tenant_id=a.tenant_id AND m.account_id=a.id AND m.day<=?),0) balance,COALESCE((SELECT SUM(m.amount) FROM cash_movements m WHERE m.tenant_id=a.tenant_id AND m.account_id=a.id AND m.day>?),0) pending_receipts FROM cash_accounts a WHERE a.tenant_id=? ORDER BY a.kind,a.name",
     )
-    .all(ctx.tenantId);
+    .all(cashToday(), cashToday(), ctx.tenantId);
   const movements = await db
     .prepare(
       "SELECT m.*,a.name account_name FROM cash_movements m JOIN cash_accounts a ON a.id=m.account_id AND a.tenant_id=m.tenant_id WHERE m.tenant_id=? ORDER BY m.day,m.created_at,m.id",
@@ -194,9 +195,9 @@ export async function adjustCash(db: DB, ctx: Context, v: Row) {
     if (!account) throw new Error("Selecione a conta para ajustar.");
     const total = await db
       .prepare(
-        "SELECT COALESCE(SUM(amount),0) total FROM cash_movements WHERE tenant_id=? AND account_id=?",
+        "SELECT COALESCE(SUM(amount),0) total FROM cash_movements WHERE tenant_id=? AND account_id=? AND day<=?",
       )
-      .get(ctx.tenantId, account.id);
+      .get(ctx.tenantId, account.id, day);
     const amount =
       v.target_balance -
       Number(account.opening_balance) -

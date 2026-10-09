@@ -55,7 +55,7 @@ import {
   transitionOrder,
 } from "./services/workshop.js";
 import { statuses } from "./domain/orders.js";
-import { configurePlan, settleInstallment } from "./services/payments.js";
+import { configurePlan, settleInstallment, settleCredit } from "./services/payments.js";
 import {
   cashControl,
   saveCashAccount,
@@ -165,6 +165,7 @@ const paymentSchema = z.object({
   card_fee_bps: z.number().int().min(0).max(10000),
   interest_bps: z.number().int().min(0).max(10000),
   first_due_on: date,
+  sale_on: date.optional(),
 });
 export function createApp(db: DB) {
   const app = express();
@@ -1008,6 +1009,11 @@ export function createApp(db: DB) {
       ),
     ),
   );
+  app.post("/api/receivables/:id/settle-credit", async (req, res) => {
+    res.json(await settleCredit(db,res.locals.context,String(req.params.id),
+      z.string().min(1).optional().parse(req.body.account_id),
+      date.optional().parse(req.body.sale_on)));
+  });
   app.post("/api/installments/:id/settle", async (req, res) => {
     await settleInstallment(
       db,

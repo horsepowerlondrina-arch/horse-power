@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { transaction, type DB } from "../db/database.js";
 import type { Context } from "../auth/session.js";
 import { assertTransition, totalOf, type Status } from "../domain/orders.js";
-import { configurePlan, settleInstallment, requireAdmin } from "./payments.js";
+import { configurePlan, settleInstallment, settleCredit, requireAdmin } from "./payments.js";
 export const id = () => randomUUID();
 export type Row = Record<string, any>;
 export async function scoped(
@@ -461,6 +461,8 @@ export async function settle(
       "SELECT id FROM payment_installments WHERE tenant_id=? AND receivable_id=? AND status='open'",
     )
     .all(ctx.tenantId, record);
+  if (r.method === "Cartão de crédito" || (!r.plan_configured && method === "Cartão de crédito"))
+    return settleCredit(db, ctx, record, accountId);
   if (parts.length !== 1)
     throw new Error("Receba cada parcela na tela de pagamento.");
   await settleInstallment(db, ctx, String(parts[0].id), accountId);

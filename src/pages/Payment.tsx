@@ -1,3 +1,4 @@
+import { nextBankingDay } from "../../shared/bankingDays";
 import { NumericInput } from "../components/NumericInput";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -24,6 +25,7 @@ export function Payment() {
     card_fee_bps: 0,
     interest_bps: 0,
     first_due_on: today(),
+    sale_on: today(),
     pass_card_fee: false,
   });
   const [accountId, setAccountId] = useState("");
@@ -68,6 +70,11 @@ export function Payment() {
   const parts = data.installments
     .filter((p) => p.receivable_id === r.id)
     .sort((a, b) => a.sequence - b.sequence);
+  const credit = r.plan_configured ? r.method === "Cartão de crédito" : form.method === "Cartão de crédito";
+  const saleOn = r.card_sale_on || form.sale_on;
+  const settlementOn = nextBankingDay(saleOn || today());
+  const openParts = parts.filter((p) => p.status === "open");
+  const creditTotal = openParts.reduce((v,p) => ({gross:v.gross+p.gross,fee:v.fee+p.fee,net:v.net+p.net}),{gross:0,fee:0,net:0});
   const plan = r.plan_configured
     ? {
         base: r.amount,
@@ -164,6 +171,9 @@ export function Payment() {
                 }
               />
             </Field>
+            {credit && <Field label="Data da venda no cartão">
+              <input type="date" value={form.sale_on} max={today()} required onChange={(e) => setForm({...form,sale_on:e.target.value})} />
+            </Field>}
             <Field label="Primeiro vencimento">
               <input
                 type="date"
@@ -243,6 +253,13 @@ export function Payment() {
             {r.method} · Saldo do cliente: <strong>{money(r.balance)}</strong>
           </p>
         )}
+        {credit && <p className="muted">O parcelamento é do cliente. A oficina recebe o líquido total em {dateLabel(settlementOn)}, no próximo dia útil após a venda (fins de semana e feriados bancários nacionais são considerados).</p>}
+        {credit && !!r.plan_configured && openParts.length>0 && (
+          <button className="button primary" disabled={busy} onClick={() => setConfirm({id:r.id,is_credit:true,...creditTotal})}>
+            Receber total do cartão · {money(creditTotal.net)}
+          </button>
+        )}
+        {credit && r.status==="paid" && <p>{(r.paid_at || "").slice(0,10)>today() ? "Crédito agendado para " : "Crédito registrado em "}{dateLabel(r.paid_at)}.</p>}
         <div className="table-scroll">
           <table>
             <thead>
@@ -272,7 +289,9 @@ export function Payment() {
                     <td>
                       {r.plan_configured ? (
                         p.status === "paid" ? (
-                          <span className="badge paid">Recebida</span>
+                          <span className="badge paid">{credit && (p.paid_at || "").slice(0,10)>today() ? "Agendada" : "Recebida"}</span>
+                        ) : credit ? (
+                          <span className="badge">Incluída no total</span>
                         ) : (
                           <button
                             className="button primary"
@@ -303,7 +322,7 @@ export function Payment() {
                 await send(`/receivables/${r.id}/plan`, form);
                 await refresh();
                 notify(
-                  "Condições salvas. Confirme as parcelas conforme receber.",
+                  credit ? "Condições salvas. Confirme o recebimento total do cartão." : "Condições salvas. Confirme as parcelas conforme receber.",
                 );
               } catch (e) {
                 setError((e as Error).message);
@@ -318,10 +337,11 @@ export function Payment() {
       </section>
       {confirm && (
         <Modal
-          title={`Confirmar recebimento da parcela ${confirm.sequence}?`}
-          description={`Cliente paga ${money(confirm.gross)}. O caixa receberá ${money(confirm.net)}, após ${money(confirm.fee)} de taxa.`}
+          title={confirm.is_credit ? "Confirmar recebimento total do cartão?" : `Confirmar recebimento da parcela ${confirm.sequence}?`}
+          description={`Cliente paga ${money(confirm.gross)}. O caixa receberá ${money(confirm.net)}, após ${money(confirm.fee)} de taxa.${confirm.is_credit ? " Crédito em " + dateLabel(settlementOn) + "." : ""}`}
           onClose={() => !busy && setConfirm(null)}
         >
+          {confirm.is_credit && !r.card_sale_on && <div className="modal-body"><Field label="Data da venda no cartão"><input type="date" value={form.sale_on} max={today()} required onChange={(e)=>setForm({...form,sale_on:e.target.value})}/></Field></div>}
           {!!data.cash_accounts?.length && (
             <div className="modal-body">
               <Field label="Conta que recebe o valor líquido">
@@ -351,17 +371,18 @@ export function Payment() {
             </button>
             <button
               className="button primary"
-              disabled={busy || (!!data.cash_accounts?.length && !accountId)}
+              disabled={busy || (!!data.cash_accounts?.length && !accountId) || (confirm.is_credit && !saleOn)}
               onClick={async () => {
                 setBusy(true);
                 setError("");
                 try {
-                  await send(`/installments/${confirm.id}/settle`, {
+                  await send(confirm.is_credit ? `/receivables/${r.id}/settle-credit` : `/installments/${confirm.id}/settle`, {
+                    sale_on: confirm.is_credit ? saleOn : undefined,
                     account_id: accountId || undefined,
                   });
                   await refresh();
                   setConfirm(null);
-                  notify("Parcela recebida e caixa atualizado.");
+                  notify(confirm.is_credit ? "Total do cartão registrado para " + dateLabel(settlementOn) + "." : "Parcela recebida e caixa atualizado.");
                 } catch (e) {
                   setError((e as Error).message);
                   setConfirm(null);

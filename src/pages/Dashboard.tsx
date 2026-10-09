@@ -28,7 +28,7 @@ export function Dashboard() {
   const startKey = start.toISOString().slice(0, 10);
   const revenue = revenueBreakdown(data.orders, startKey, today());
   const received = data.cash
-    .filter((c) => workshopDate(c.created_at) >= startKey)
+    .filter((c) => workshopDate(c.created_at) >= startKey && workshopDate(c.created_at) <= today())
     .reduce((s, c) => s + c.amount, 0);
   const open = data.orders.filter((o) =>
     ["open", "working", "ready"].includes(o.status),

@@ -1,3 +1,4 @@
+import { workshopDate } from "../lib/workflow";
 import { NumericInput } from "../components/NumericInput";
 import { PartsPricing } from "./PartsPricing";
 import { RegisterModal } from "./Registers";
@@ -367,7 +368,7 @@ export function Finance() {
         />
         <Stat
           label="Recebimentos registrados"
-          value={money(data.cash.reduce((s, c) => s + c.amount, 0))}
+          value={money(data.cash.filter((c) => workshopDate(c.created_at)<=today()).reduce((s, c) => s + c.amount, 0))}
           detail="Total de entradas no caixa"
           icon={<Wallet size={18} />}
           accent
@@ -376,10 +377,10 @@ export function Finance() {
           label="Recebíveis vencidos"
           value={money(
             open
-              .filter((r) => !r.plan_configured && r.due_on < today())
-              .reduce((sum, r) => sum + r.amount, 0) +
+              .filter((r) => (!r.plan_configured || r.method === "Cartão de crédito") && r.due_on < today())
+              .reduce((sum, r) => sum + (r.balance ?? r.amount), 0) +
               data.installments
-                .filter((p) => p.status === "open" && p.due_on < today())
+                .filter((p) => p.method !== "Cartão de crédito" && p.status === "open" && p.due_on < today())
                 .reduce((sum, p) => sum + p.gross, 0),
           )}
           detail="Contas em aberto anteriores a hoje"
@@ -438,7 +439,7 @@ export function Finance() {
                   })
                   .map((c) => (
                     <tr key={c.id}>
-                      <td>{dateLabel(c.created_at)}</td>
+                      <td>{dateLabel(c.created_at)}{workshopDate(c.created_at)>today() && <small>Crédito agendado</small>}</td>
                       <td>
                         {
                           data.receivables.find((r) => r.id === c.receivable_id)
@@ -516,7 +517,7 @@ export function Finance() {
                         </button>
                       ) : (
                         <span className="muted">
-                          Baixada em {dateLabel(r.paid_at)}
+                          {(r.paid_at || "").slice(0,10)>today() ? "Crédito agendado para " : "Baixada em "}{dateLabel(r.paid_at)}
                         </span>
                       )}
                     </td>

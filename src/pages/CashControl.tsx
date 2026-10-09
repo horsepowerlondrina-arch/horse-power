@@ -142,6 +142,7 @@ export function CashControl() {
               <strong className={a.balance < 0 ? "negative" : ""}>
                 {money(a.balance)}
               </strong>
+              {!!a.pending_receipts && <p className="muted">A entrar: {money(a.pending_receipts)} · disponível na data do crédito</p>}
               <div className="report-actions">
                 <button
                   className="button"

@@ -1,3 +1,5 @@
+import { nextBankingDay } from "../shared/bankingDays";
+import { cashToday } from "../server/services/cashControl";
 import { calculatePlan, addMonthsClamped } from "../server/domain/payments";
 import { configurePlan, settleInstallment } from "../server/services/payments";
 import { listOrders } from "../server/services/workshop";
@@ -742,7 +744,7 @@ test("parcelas conservam centavos, taxas e líquido, inclusive nos limites de ar
     }),
   );
 });
-test("OS fica a receber até a última parcela e o caixa registra somente o líquido confirmado", async () => {
+test("Crédito parcelado recebe o total líquido em uma única confirmação", async () => {
   const db = fixture();
   try {
     const record = await saveOrder(db, ctx, input());
@@ -776,7 +778,7 @@ test("OS fica a receber até a última parcela e o caixa registra somente o líq
     await settleInstallment(db, ctx, String(parts[0].id));
     assert.equal(
       db.prepare("SELECT SUM(amount) n FROM cash_entries").get()!.n,
-      parts[0].net,
+      plan.net,
     );
     await assert.rejects(
       async () => await settleInstallment(db, ctx, String(parts[0].id)),
@@ -795,14 +797,13 @@ test("OS fica a receber até a última parcela e o caixa registra somente o líq
     );
     assert.equal(
       (await listOrders(db, "a"))[0].display_status,
-      "awaiting_payment",
+      "completed",
     );
     assert.equal(
       db.prepare("SELECT due_on FROM receivables").get()!.due_on,
-      "2026-02-28",
+      nextBankingDay(cashToday()),
     );
-    await settleInstallment(db, ctx, String(parts[1].id));
-    await settleInstallment(db, ctx, String(parts[2].id));
+    await assert.rejects(settleInstallment(db, ctx, String(parts[1].id)), /já foi/);
     assert.equal(
       filterOrders((await listOrders(db, "a")) as Order[], false, "active")
         .length,
@@ -820,7 +821,7 @@ test("OS fica a receber até a última parcela e o caixa registra somente o líq
       .get()!;
     assert.deepEqual(
       [cash.net, cash.gross, cash.fee, cash.n],
-      [plan.net, plan.gross, plan.fee, 3],
+      [plan.net, plan.gross, plan.fee, 1],
     );
   } finally {
     db.close();

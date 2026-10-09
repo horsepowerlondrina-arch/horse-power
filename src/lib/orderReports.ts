@@ -1,4 +1,4 @@
-import type { Entity, Order, Workspace } from "./types";
+import { today, type Entity, type Order, type Workspace } from "./types";
 import { displayStatus, workshopDate, hasMissingProductCost } from "./workflow";
 
 export type OrderFilters = {
@@ -28,7 +28,7 @@ export function orderPayments(
   );
   const installments = new Map(data.installments.map((i) => [i.id, i]));
   return data.cash
-    .filter((c) => receipts.has(c.receivable_id))
+    .filter((c) => receipts.has(c.receivable_id) && date(installments.get(c.installment_id)?.paid_at || c.created_at) <= today())
     .map((c) => ({
       ...c,
       method: String(c.method || "—"),

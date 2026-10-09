@@ -263,12 +263,13 @@ test("caixa registra pagamentos e recebimentos líquidos uma vez, protege contas
     let data = await (await call("/cash-control", undefined, "GET")).json();
     assert.equal(
       data.accounts.find((a: any) => a.id === bank.id).balance,
-      108700,
+      99000,
     );
     assert.equal(
       data.accounts.find((a: any) => a.id === cash.id).balance,
       5000,
     );
+    assert.equal(data.accounts.find((a: any) => a.id === bank.id).pending_receipts, 9700);
     assert.equal(data.movements.length, 2);
     assert.equal(
       data.movements.find((m: any) => m.origin === "receipt").amount,
@@ -316,8 +317,8 @@ test("caixa registra pagamentos e recebimentos líquidos uma vez, protege contas
       account_id: bank.id,
     });
     assert.equal(report.initial, 100000);
-    assert.equal(report.entries, 9700);
-    assert.equal(report.exits, 19700);
+    assert.equal(report.entries, 0);
+    assert.equal(report.exits, 10000);
     assert.equal(report.closing, 90000);
     assert.equal(
       postgresSql("SELECT * FROM cash_movements WHERE tenant_id=?"),

@@ -1,3 +1,4 @@
+import { today } from "./types";
 export type CashAccount = {
   id: string;
   name: string;
@@ -6,6 +7,7 @@ export type CashAccount = {
   opening_on: string;
   active: number;
   balance: number;
+  pending_receipts?: number;
 };
 export type CashMovement = {
   id: string;
@@ -47,7 +49,7 @@ export function cashReport(
       created_at: "",
     })),
     ...movements
-      .filter((m) => ids.has(m.account_id))
+      .filter((m) => ids.has(m.account_id) && m.day <= today())
       .map((m) => ({
         ...m,
         account_name:
