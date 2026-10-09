@@ -1,0 +1,67 @@
+name: Publicar extensão Horse Power
+on:
+  push:
+    branches: [main]
+    paths: [extension/horse-power/manifest.json, .github/workflows/publish-extension.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: chrome-web-store
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: Validar extensão e publicação
+        run: |
+          node --test tests/chrome-web-store.test.mjs
+          npx tsx --test tests/extension-worker.test.ts tests/extension.test.ts
+          npm run build
+      - name: Conferir pacote
+        run: |
+          python3 - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+          folder = Path("extension/horse-power")
+          with zipfile.ZipFile("public/downloads/horse-power-conector.zip") as package:
+              assert package.testzip() is None, "ZIP inválido"
+              expected = {str(p.relative_to(folder)) for p in folder.rglob("*") if p.is_file()}
+              assert set(package.namelist()) == expected, "Conteúdo do ZIP difere da extensão"
+              for entry in package.namelist():
+                  archived, source = package.read(entry), (folder / entry).read_bytes()
+                  if Path(entry).suffix in {".js", ".json", ".html", ".css", ".txt"}:
+                      archived, source = archived.replace(b"\\r\\n", b"\\n"), source.replace(b"\\r\\n", b"\\n")
+                  assert archived == source, "Arquivo divergente: " + entry
+              print("Pacote verificado:", json.loads(package.read("manifest.json"))["version"])
+          PY
+      - name: Autenticar no Google
+        id: google
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: horse-power-extensao
+          workload_identity_provider: projects/736187856441/locations/global/workloadIdentityPools/github-horse-power/providers/github
+          service_account: publica-o-horse-power@horse-power-extensao.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+          create_credentials_file: false
+      - name: Enviar e solicitar publicação
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
+          CWS_PUBLISHER_ID: 5efff7ad-954f-4a25-b18f-9d20e9a5fd7b
+        run: node scripts/publish-extension.mjs
