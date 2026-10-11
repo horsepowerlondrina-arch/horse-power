@@ -3,6 +3,7 @@ import { useApp } from "../lib/context";
 import { send } from "../lib/api";
 import { money, type Entity } from "../lib/types";
 import { salePrice } from "../../shared/pricing";
+import { productLabel } from "../../shared/productIdentity";
 import { CatalogPicker } from "./CatalogPicker";
 import { NumericInput } from "./NumericInput";
 import { Modal, Field } from "./ui";
@@ -85,11 +86,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
       setChoices(
         result.items.map((item) => ({
           line: item.line,
-          mode: item.catalog_id
-            ? "existing"
-            : item.match === "review"
-              ? "review"
-              : "new",
+          mode: item.catalog_id ? "existing" : "review",
           catalog_id: item.catalog_id,
           quantity: item.quantity_in_stock,
           name: item.name,
@@ -181,16 +178,20 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
             ) : (
               <>
                 <p>
-                  Para produtos existentes, somente o estoque será atualizado.
-                  Confira a quantidade em unidades, principalmente em caixas e
-                  embalagens. O código do fornecedor será vinculado ao produto
-                  escolhido para as próximas notas.
+                  Para produtos existentes, o estoque, o custo da nota e o preço
+                  de venda pela regra de lucro serão atualizados. Confira a
+                  quantidade em unidades, principalmente em caixas e embalagens.
+                  O código do fornecedor será vinculado ao produto escolhido
+                  para as próximas notas.
                 </p>
                 {preview.items.map((item, index) => {
                   const c = choices[index];
                   if (!c) return null;
                   const candidateNames = item.candidates
-                    .map((id) => products.find((p) => p.id === id)?.name)
+                    .map((id) => {
+                      const product = products.find((p) => p.id === id);
+                      return product ? productLabel(product) : "";
+                    })
                     .filter(Boolean);
                   return (
                     <section
@@ -206,11 +207,27 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
                           {item.gtin ? " · Código de barras: " + item.gtin : ""}
                         </small>
                       </p>
+                      <p>
+                        <small>
+                          Frete deste item: {money(item.freight)}
+                          {c.quantity > 0
+                            ? " · " +
+                              money(Math.round(item.freight / c.quantity)) +
+                              " por unidade"
+                            : ""}
+                          . Incluído no custo.
+                        </small>
+                      </p>
                       {c.mode === "review" && (
                         <p className="error-box">
-                          Há produtos semelhantes ({candidateNames.join(", ")}).
-                          Escolha o cadastro correto ou confirme que é um
-                          produto novo.
+                          {candidateNames.length
+                            ? "Há produtos semelhantes: " +
+                              candidateNames.join(", ") +
+                              ". "
+                            : "Produto ainda sem vínculo confirmado com este fornecedor. "}
+                          Se a peça já veio do Sky Peças ou de outro fornecedor,
+                          escolha o cadastro existente. Cadastre um novo produto
+                          somente se for uma peça diferente.
                         </p>
                       )}
                       {item.match === "supplier" && (
@@ -294,7 +311,37 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
                             />
                             {c.catalog_id && (
                               <small>
-                                Custo e preço do cadastro serão preservados.
+                                {(() => {
+                                  const selected = products.find(
+                                    (p) => p.id === c.catalog_id,
+                                  );
+                                  const totals = choices.reduce(
+                                    (sum, choice, i) => {
+                                      if (
+                                        choice.mode === "existing" &&
+                                        choice.catalog_id === c.catalog_id &&
+                                        choice.quantity > 0
+                                      ) {
+                                        sum.cost += preview.items[i].totalCost;
+                                        sum.quantity += choice.quantity;
+                                      }
+                                      return sum;
+                                    },
+                                    { cost: 0, quantity: 0 },
+                                  );
+                                  const cost = totals.quantity
+                                    ? Math.round(totals.cost / totals.quantity)
+                                    : 0;
+                                  return (
+                                    <>
+                                      Custo: {money(selected?.cost || 0)} →{" "}
+                                      {money(cost)} · Venda:{" "}
+                                      {money(selected?.price || 0)} →{" "}
+                                      {money(priceFor(cost))}. O cadastro será
+                                      atualizado após confirmar a nota.
+                                    </>
+                                  );
+                                })()}
                               </small>
                             )}
                           </div>

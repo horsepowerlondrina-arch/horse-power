@@ -153,10 +153,16 @@ export async function importStockInvoice(
       quantity: number;
       movement_id: string;
     }[] = [];
+    const existingCosts = new Map<
+      string,
+      { total: number; freight: number; quantity: number }
+    >();
+    const pricing = await getPartsPricing(db, ctx.tenantId);
     for (const item of invoice.items) {
       const choice = choices.find((c) => c.line === item.lines.join(","))!;
       let catalogId = choice.catalog_id;
-      const cost = choice.cost ?? Math.round(item.totalCost / choice.quantity);
+      const invoiceCost = Math.round(item.totalCost / choice.quantity);
+      const cost = catalogId ? invoiceCost : (choice.cost ?? invoiceCost);
       const freight = Math.round(item.freight / choice.quantity);
       if (!Number.isSafeInteger(cost) || cost > 100000000)
         throw new Error("Custo unitário fora do limite.");
@@ -176,6 +182,15 @@ export async function importStockInvoice(
             "UPDATE catalog SET stock=stock+?,stock_verified=1 WHERE tenant_id=? AND id=?",
           )
           .run(choice.quantity, ctx.tenantId, catalogId);
+        const accumulated = existingCosts.get(catalogId) || {
+          total: 0,
+          freight: 0,
+          quantity: 0,
+        };
+        accumulated.total += item.totalCost;
+        accumulated.freight += item.freight;
+        accumulated.quantity += choice.quantity;
+        existingCosts.set(catalogId, accumulated);
         updated++;
       } else {
         catalogId = id();
@@ -233,7 +248,7 @@ export async function importStockInvoice(
       const movement = id();
       await db
         .prepare(
-          "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id,unit_cost,freight_unit) VALUES(?,?,?,?,?,?,?,?)",
+          "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id,unit_cost,freight_unit,unit_price) VALUES(?,?,?,?,?,?,?,?,?)",
         )
         .run(
           movement,
@@ -249,8 +264,9 @@ export async function importStockInvoice(
             item.code
           ).slice(0, 200),
           ctx.userId,
-          Math.round(item.totalCost / choice.quantity),
+          invoiceCost,
           freight,
+          salePrice(invoiceCost, pricing),
         );
       quantityTotal += choice.quantity;
       movements.push({
@@ -258,6 +274,22 @@ export async function importStockInvoice(
         quantity: choice.quantity,
         movement_id: movement,
       });
+    }
+    // Use the purchase cost of this invoice, not the old stock average.
+    // Different supplier codes mapped to one product share a quantity-weighted invoice cost.
+    for (const [catalogId, values] of existingCosts) {
+      const cost = Math.round(values.total / values.quantity);
+      await db
+        .prepare(
+          "UPDATE catalog SET cost=?,price=?,freight_unit=?,cost_known=1 WHERE tenant_id=? AND id=?",
+        )
+        .run(
+          cost,
+          salePrice(cost, pricing),
+          Math.round(values.freight / values.quantity),
+          ctx.tenantId,
+          catalogId,
+        );
     }
     const record = id(),
       summary = {

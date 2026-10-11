@@ -80,7 +80,7 @@ test("invalid, unapproved, test, oversized and entity XML are rejected", () => {
     /Quantidade/,
   );
 });
-test("same names require review; preview is read only and existing product gets quantity only", async () => {
+test("same names require review; preview is read only and existing costs and sale follow the invoice", async () => {
   const db = fixture();
   try {
     const p = await previewStockInvoice(db, ctx, xml());
@@ -98,8 +98,23 @@ test("same names require review; preview is read only and existing product gets 
     const after = db.prepare("SELECT * FROM catalog WHERE id='p'").get()!;
     assert.equal(result.updated, 1);
     assert.equal(after.stock, 7);
+    assert.equal(after.cost, 2500);
+    assert.equal(after.price, 4000);
+    assert.equal(after.freight_unit, 200);
+    assert.equal(
+      db.prepare("SELECT unit_price FROM stock_movements").get()!.unit_price,
+      4000,
+    );
     assert.deepEqual(
-      { ...after, stock: before.stock, stock_verified: before.stock_verified },
+      {
+        ...after,
+        stock: before.stock,
+        stock_verified: before.stock_verified,
+        cost: before.cost,
+        price: before.price,
+        freight_unit: before.freight_unit,
+        cost_known: before.cost_known,
+      },
       { ...before },
     );
     const next = await previewStockInvoice(db, ctx, xml(2));
@@ -276,6 +291,167 @@ test("Postgres qualifies invoice tables and preview endpoint accepts authorized 
     assert.equal((await result.json()).items.length, 1);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    db.close();
+  }
+});
+
+function otherSupplier(file: string) {
+  const old = file.match(/Id="NFe(\d{44})"/)![1];
+  const raw = old.slice(0, 6) + "11222333000181" + old.slice(20, 43);
+  let sum = 0;
+  for (let i = 42, w = 2; i >= 0; i--, w = w === 9 ? 2 : w + 1)
+    sum += Number(raw[i]) * w;
+  const check = 11 - (sum % 11),
+    key = raw + (check >= 10 ? 0 : check);
+  return file
+    .replaceAll(old, key)
+    .replace("<CNPJ>12345678000195</CNPJ>", "<CNPJ>11222333000181</CNPJ>");
+}
+function twoProducts(freight = "12.00") {
+  let file = xml().replace("<vFrete>4.00</vFrete>", "");
+  const first = file.match(/<det .*?<\/det>/)![0];
+  const second = first
+    .replace('nItem="1"', 'nItem="2"')
+    .replace("SUP-1", "SUP-2")
+    .replace("40.00", "80.00")
+    .replace("2.0000", "4.0000");
+  return file.replace(
+    "</infNFe>",
+    second +
+      "<total><ICMSTot><vFrete>" +
+      freight +
+      "</vFrete></ICMSTot></total></infNFe>",
+  );
+}
+test("two suppliers reuse a Sky product after independent mappings without merging equal names", async () => {
+  const db = fixture();
+  try {
+    db.prepare(
+      "UPDATE catalog SET brand='Marca A',manufacturer_code='SKY-123' WHERE id='p'",
+    ).run();
+    await importStockInvoice(db, ctx, xml(), [choice]);
+    const other = otherSupplier(xml(2, "2.0000", "DIFFERENT")).replace(
+      "Filtro de óleo",
+      "FILTRO LUBRIFICANTE SKY-123",
+    );
+    const preview = await previewStockInvoice(db, ctx, other);
+    assert.equal(preview.items[0].catalog_id, "");
+    await importStockInvoice(db, ctx, other, [choice]);
+    assert.equal(db.prepare("SELECT count(*) n FROM catalog").get()!.n, 3);
+    assert.equal(
+      db.prepare("SELECT count(*) n FROM stock_invoice_products").get()!.n,
+      2,
+    );
+    assert.equal(
+      (
+        await previewStockInvoice(
+          db,
+          ctx,
+          otherSupplier(xml(3, "2.0000", "DIFFERENT")),
+        )
+      ).items[0].catalog_id,
+      "p",
+    );
+    assert.equal(
+      (await previewStockInvoice(db, ctx, xml(4))).items[0].catalog_id,
+      "p",
+    );
+    assert.equal(
+      db.prepare("SELECT stock FROM catalog WHERE id='q'").get()!.stock,
+      0,
+    );
+    assert.equal(
+      db.prepare("SELECT brand FROM catalog WHERE id='p'").get()!.brand,
+      "Marca A",
+    );
+  } finally {
+    db.close();
+  }
+});
+test("total invoice freight is allocated proportionally, conserved in cents and never counted twice", () => {
+  const items = parseStockInvoice(twoProducts()).items;
+  assert.deepEqual(
+    items.map((i) => i.freight),
+    [400, 800],
+  );
+  assert.deepEqual(
+    items.map((i) => i.totalCost),
+    [5000, 9400],
+  );
+  const small = parseStockInvoice(twoProducts("0.01")).items;
+  assert.equal(
+    small.reduce((s, i) => s + i.freight, 0),
+    1,
+  );
+  assert.deepEqual(
+    small.map((i) => i.freight),
+    [0, 1],
+  );
+  const allocated = xml().replace(
+    "</infNFe>",
+    "<total><ICMSTot><vFrete>4.00</vFrete></ICMSTot></total></infNFe>",
+  );
+  assert.equal(parseStockInvoice(allocated).items[0].totalCost, 5000);
+  assert.throws(
+    () =>
+      parseStockInvoice(
+        allocated.replace(
+          "<vFrete>4.00</vFrete></ICMSTot>",
+          "<vFrete>3.00</vFrete></ICMSTot>",
+        ),
+      ),
+    /frete/,
+  );
+  const partial = twoProducts().replace(
+    "<vProd>40.00</vProd>",
+    "<vProd>40.00</vProd><vFrete>4.00</vFrete>",
+  );
+  assert.deepEqual(
+    parseStockInvoice(partial).items.map((i) => i.freight),
+    [400, 800],
+  );
+});
+test("same product on multiple invoice lines uses weighted invoice cost, stock and configured pricing", async () => {
+  const db = fixture();
+  try {
+    await importStockInvoice(db, ctx, twoProducts(), [
+      { ...choice },
+      { line: "2", catalog_id: "p", quantity: 4 },
+    ]);
+    const product = db.prepare("SELECT * FROM catalog WHERE id='p'").get()!;
+    assert.equal(product.stock, 11);
+    assert.equal(product.cost, 2400);
+    assert.equal(product.freight_unit, 200);
+    assert.equal(product.price, 3840);
+    await importStockInvoice(db, ctx, twoProducts(), [
+      { ...choice },
+      { line: "2", catalog_id: "p", quantity: 4 },
+    ]);
+    assert.equal(
+      db.prepare("SELECT stock FROM catalog WHERE id='p'").get()!.stock,
+      11,
+    );
+  } finally {
+    db.close();
+  }
+});
+test("invoice changes current catalog pricing without rewriting historical order costs and prices", async () => {
+  const db = fixture();
+  try {
+    db.exec(
+      "INSERT INTO orders(id,tenant_id,number,kind,status,entered_on,due_on,km) VALUES('o','a',1,'quote','quote','2026-10-01','2026-10-01',0); INSERT INTO order_items(id,tenant_id,order_id,catalog_id,kind,name,quantity,cost,price) VALUES('i','a','o','p','product','Filtro',1,900,2000); UPDATE tenants SET parts_pricing_mode='markup',parts_pricing_bps=5000 WHERE id='a'",
+    );
+    await importStockInvoice(db, ctx, xml(), [choice]);
+    assert.equal(
+      db.prepare("SELECT price FROM catalog WHERE id='p'").get()!.price,
+      3750,
+    );
+    const old = db
+      .prepare("SELECT cost,price FROM order_items WHERE id='i'")
+      .get()!;
+    assert.equal(old.cost, 900);
+    assert.equal(old.price, 2000);
+  } finally {
     db.close();
   }
 });

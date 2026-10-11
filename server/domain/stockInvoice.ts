@@ -150,12 +150,53 @@ export function parseStockInvoice(xml: string): StockInvoice {
     fail(
       "Selecione uma nota de venda do fornecedor, destinada à entrada de produtos.",
     );
-  const det = Array.isArray(inf.det) ? inf.det : [inf.det];
+  const det: any[] = Array.isArray(inf.det) ? inf.det : [inf.det];
   if (!det.length || det.length > 500)
     fail("A nota deve conter de 1 a 500 itens.");
+  const declaredFreight = inf.total?.ICMSTot?.vFrete;
+  const freightShares = det.map((raw) =>
+    decimal(one(one(raw, "item").prod, "produto").vFrete, 2),
+  );
+  const assignedFreight = freightShares.reduce((sum, value) => sum + value, 0);
+  if (declaredFreight !== undefined) {
+    const totalFreight = decimal(declaredFreight, 2);
+    if (assignedFreight > totalFreight)
+      fail(
+        "O frete dos itens é maior que o frete total da nota. Confira o XML.",
+      );
+    const remaining = totalFreight - assignedFreight;
+    if (remaining > 0) {
+      // Retain the supplier's item allocation; allocate only the amount not allocated.
+      const missing = freightShares
+        .map((value, index) => ({ value, index }))
+        .filter((row) => row.value === 0);
+      const eligible = missing.length
+        ? missing.map((row) => row.index)
+        : det.map((_, index) => index);
+      const weights = eligible.map((index) =>
+        decimal(det[index].prod.vProd, 2, true),
+      );
+      const denominator = weights.reduce((sum, value) => sum + value, 0);
+      const shares = eligible.map((index, i) => {
+        const exact = denominator
+          ? (remaining * weights[i]) / denominator
+          : remaining / eligible.length;
+        return {
+          index,
+          amount: Math.floor(exact),
+          fraction: exact - Math.floor(exact),
+        };
+      });
+      let cents = remaining - shares.reduce((sum, row) => sum + row.amount, 0);
+      shares.sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+      for (const share of shares) {
+        freightShares[share.index] += share.amount + (cents-- > 0 ? 1 : 0);
+      }
+    }
+  }
   const groups = new Map<string, InvoiceLine>(),
     lineNumbers = new Set<string>();
-  for (const raw of det) {
+  for (const [index, raw] of det.entries()) {
     const item = one(raw, "item"),
       p = one(item.prod, "produto"),
       line = text(item["@_nItem"], 10);
@@ -169,7 +210,7 @@ export function parseStockInvoice(xml: string): StockInvoice {
     const quantity = decimal(p.qCom, 4, true) / 10000;
     if (!code || !name || !unit || quantity <= 0)
       fail("Produto sem código, descrição, unidade ou quantidade válida.");
-    const freight = decimal(p.vFrete, 2),
+    const freight = freightShares[index],
       tax = item.imposto || {};
     const icms =
       tax.ICMS &&
