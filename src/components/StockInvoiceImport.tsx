@@ -7,7 +7,14 @@ import { productLabel } from "../../shared/productIdentity";
 import { CatalogPicker } from "./CatalogPicker";
 import { NumericInput } from "./NumericInput";
 import { Modal, Field } from "./ui";
+type Identity = {
+  name: string;
+  brand: string;
+  manufacturer_code: string;
+  application: string;
+};
 type Line = {
+  identity: Identity;
   line: string;
   name: string;
   code: string;
@@ -32,6 +39,9 @@ type Preview = {
   already_imported: boolean;
 };
 type Choice = {
+  brand: string;
+  manufacturer_code: string;
+  application: string;
   line: string;
   mode: string;
   catalog_id: string;
@@ -89,7 +99,10 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
           mode: item.catalog_id ? "existing" : "review",
           catalog_id: item.catalog_id,
           quantity: item.quantity_in_stock,
-          name: item.name,
+          name: item.identity.name,
+          brand: item.identity.brand,
+          manufacturer_code: item.identity.manufacturer_code,
+          application: item.identity.application,
           category: "",
           cost: item.cost,
           price: item.price,
@@ -238,6 +251,14 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
                           </small>
                         </p>
                       )}
+                      {item.match === "reference" && (
+                        <p>
+                          <small>
+                            Reconhecido pela marca e referência do fabricante.
+                            Confira o produto selecionado.
+                          </small>
+                        </p>
+                      )}
                       {item.match === "barcode" && (
                         <p>
                           <small>
@@ -356,6 +377,48 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
                                 maxLength={300}
                                 onChange={(e) =>
                                   patch(index, { name: e.target.value })
+                                }
+                              />
+                            </Field>
+                            {(!c.brand || !c.manufacturer_code) && (
+                              <p className="field full">
+                                <small>
+                                  A nota não permitiu identificar todos os
+                                  dados. Confira e preencha a marca e o código
+                                  do fabricante; o código do fornecedor
+                                  permanece separado.
+                                </small>
+                              </p>
+                            )}
+                            <Field label="Marca">
+                              <input
+                                disabled={busy}
+                                maxLength={100}
+                                value={c.brand}
+                                onChange={(e) =>
+                                  patch(index, { brand: e.target.value })
+                                }
+                              />
+                            </Field>
+                            <Field label="Código do fabricante">
+                              <input
+                                disabled={busy}
+                                maxLength={100}
+                                value={c.manufacturer_code}
+                                onChange={(e) =>
+                                  patch(index, {
+                                    manufacturer_code: e.target.value,
+                                  })
+                                }
+                              />
+                            </Field>
+                            <Field label="Aplicação informada na nota" full>
+                              <input
+                                disabled={busy}
+                                maxLength={500}
+                                value={c.application}
+                                onChange={(e) =>
+                                  patch(index, { application: e.target.value })
                                 }
                               />
                             </Field>

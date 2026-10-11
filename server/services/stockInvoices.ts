@@ -11,6 +11,7 @@ import { id, scoped, audit } from "./workshop.js";
 import { workshopPrice, getPartsPricing } from "./partsPricing.js";
 import { salePrice } from "../../shared/pricing.js";
 import { validProductCategory } from "./productCategories.js";
+import { invoiceIdentity, identityKey } from "../domain/invoiceIdentity.js";
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 const choiceSchema = z.object({
@@ -19,6 +20,9 @@ const choiceSchema = z.object({
   quantity: z.number().int().min(1).max(1000000),
   name: z.string().trim().min(1).max(300).optional(),
   category: z.string().trim().max(100).default(""),
+  brand: z.string().trim().max(100).optional(),
+  manufacturer_code: z.string().trim().max(100).optional(),
+  application: z.string().trim().max(500).optional(),
   cost: z.number().int().min(0).max(100000000).optional(),
   price: z.number().int().min(0).max(100000000).optional(),
 });
@@ -56,6 +60,7 @@ export async function previewStockInvoice(db: DB, ctx: Context, xml: string) {
   const available = new Set(catalog.map((p) => p.id));
   const pricing = await getPartsPricing(db, ctx.tenantId);
   const items = invoice.items.map((item) => {
+    const identity = invoiceIdentity(invoice.document, item.name, item.code);
     const exact = links.find(
       (l) =>
         l.supplier_document === invoice.document &&
@@ -75,15 +80,31 @@ export async function previewStockInvoice(db: DB, ctx: Context, xml: string) {
           ),
         ]
       : [];
+    const references =
+      identity.brand && identity.manufacturer_code
+        ? catalog
+            .filter(
+              (p) =>
+                identityKey(p.brand || "") === identityKey(identity.brand) &&
+                identityKey(p.manufacturer_code || "") ===
+                  identityKey(identity.manufacturer_code),
+            )
+            .map((p) => p.id)
+        : [];
+    const identifiers = [...new Set([...barcodes, ...references])];
     const matched =
-      exact?.catalog_id || (barcodes.length === 1 ? barcodes[0] : "");
+      exact?.catalog_id || (identifiers.length === 1 ? identifiers[0] : "");
     const candidates = catalog
       .filter(
         (p) =>
           String(p.sku).toLowerCase() === item.code.toLowerCase() ||
           String(p.manufacturer_code).toLowerCase() ===
             item.code.toLowerCase() ||
-          String(p.name).toLowerCase() === item.name.toLowerCase(),
+          String(p.name).toLowerCase() === item.name.toLowerCase() ||
+          identityKey(p.name) === identityKey(identity.name) ||
+          (identity.manufacturer_code &&
+            identityKey(p.manufacturer_code || "") ===
+              identityKey(identity.manufacturer_code)),
       )
       .map((p) => p.id);
     const amount = item.quantity * (exact?.quantity_factor || 1);
@@ -94,6 +115,7 @@ export async function previewStockInvoice(db: DB, ctx: Context, xml: string) {
     const cost = quantity ? Math.round(item.totalCost / quantity) : 0;
     return {
       ...item,
+      identity,
       line: item.lines.join(","),
       catalog_id: matched,
       candidates,
@@ -103,8 +125,10 @@ export async function previewStockInvoice(db: DB, ctx: Context, xml: string) {
       match: exact
         ? "supplier"
         : matched
-          ? "barcode"
-          : candidates.length || barcodes.length > 1
+          ? barcodes.includes(matched)
+            ? "barcode"
+            : "reference"
+          : candidates.length || identifiers.length > 1
             ? "review"
             : "new",
     };
@@ -161,6 +185,7 @@ export async function importStockInvoice(
     for (const item of invoice.items) {
       const choice = choices.find((c) => c.line === item.lines.join(","))!;
       let catalogId = choice.catalog_id;
+      const identity = invoiceIdentity(invoice.document, item.name, item.code);
       const invoiceCost = Math.round(item.totalCost / choice.quantity);
       const cost = catalogId ? invoiceCost : (choice.cost ?? invoiceCost);
       const freight = Math.round(item.freight / choice.quantity);
@@ -191,6 +216,21 @@ export async function importStockInvoice(
         accumulated.freight += item.freight;
         accumulated.quantity += choice.quantity;
         existingCosts.set(catalogId, accumulated);
+        if (identity.brand && identity.manufacturer_code) {
+          await db
+            .prepare(
+              "UPDATE catalog SET brand=CASE WHEN brand='' THEN ? ELSE brand END,manufacturer_code=CASE WHEN manufacturer_code='' THEN ? ELSE manufacturer_code END,application=CASE WHEN application='' THEN ? ELSE application END,name=CASE WHEN name=? THEN ? ELSE name END WHERE tenant_id=? AND id=?",
+            )
+            .run(
+              identity.brand,
+              identity.manufacturer_code,
+              identity.application,
+              item.name,
+              identity.name,
+              ctx.tenantId,
+              catalogId,
+            );
+        }
         updated++;
       } else {
         catalogId = id();
@@ -202,7 +242,7 @@ export async function importStockInvoice(
           .run(
             catalogId,
             ctx.tenantId,
-            choice.name || item.name,
+            choice.name || identity.name,
             "HP-" + catalogId,
             category,
             cost,
@@ -210,6 +250,17 @@ export async function importStockInvoice(
             choice.quantity,
             Math.min(freight, cost),
             category ? 1 : 0,
+          );
+        await db
+          .prepare(
+            "UPDATE catalog SET brand=?,manufacturer_code=?,application=? WHERE tenant_id=? AND id=?",
+          )
+          .run(
+            choice.brand ?? identity.brand,
+            choice.manufacturer_code ?? identity.manufacturer_code,
+            choice.application ?? identity.application,
+            ctx.tenantId,
+            catalogId,
           );
         created++;
       }
