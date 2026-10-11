@@ -62,6 +62,7 @@ import {
   adjustCash,
 } from "./services/cashControl.js";
 import { requireAdmin } from "./services/payments.js";
+import { previewStockInvoice, importStockInvoice } from "./services/stockInvoices.js";
 import { calculatePlan, paymentMethods } from "./domain/payments.js";
 import { lookupVehicle, providerToken } from "./services/vehicleLookup.js";
 const text = z.string().trim().max(500).default("");
@@ -170,6 +171,7 @@ const paymentSchema = z.object({
 export function createApp(db: DB) {
   const app = express();
   app.disable("x-powered-by");
+  app.use("/api/stock-invoices", express.json({ limit: "3mb" }));
   app.use(express.json({ limit: "256kb" }));
   app.use("/api", (req, res, next) => {
     res.set("Cache-Control", "no-store");
@@ -1156,6 +1158,14 @@ export function createApp(db: DB) {
     app.post(`/api/${table}`, handler);
     app.put(`/api/${table}/:id`, handler);
   }
+  app.post("/api/stock-invoices/preview", async (req, res) => {
+    const input = z.object({xml:z.string().min(1).max(2*1024*1024)}).parse(req.body);
+    res.json(await previewStockInvoice(db,res.locals.context,input.xml));
+  });
+  app.post("/api/stock-invoices/import", async (req, res) => {
+    const input = z.object({xml:z.string().min(1).max(2*1024*1024),choices:z.unknown()}).parse(req.body);
+    res.json(await importStockInvoice(db,res.locals.context,input.xml,input.choices));
+  });
   app.post("/api/stock/:id", async (req, res) => {
     const ctx: Context = res.locals.context;
     const input = z

@@ -33,6 +33,8 @@ export function postgresSql(input: string) {
     "orders",
     "order_items",
     "stock_movements",
+    "stock_invoices",
+    "stock_invoice_products",
     "receivables",
     "cash_entries",
     "audit_events",

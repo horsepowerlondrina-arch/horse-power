@@ -4,6 +4,7 @@ import { PartsPricing } from "./PartsPricing";
 import { RegisterModal } from "./Registers";
 import { CapturePanel } from "../components/CapturePanel";
 import { StockEntry } from "../components/StockEntry";
+import { StockInvoiceImport } from "../components/StockInvoiceImport";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -37,6 +38,7 @@ export function Stock() {
   const [adding, setAdding] = useState(false),
     [capture, setCapture] = useState(false);
   const [entry, setEntry] = useState<Entity | null | undefined>(undefined);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [low, setLow] = useState(params.has("low"));
   const [tab, setTab] = useState("balance");
@@ -73,6 +75,7 @@ export function Stock() {
         title="Estoque"
         actions={
           <>
+            <button className="button" onClick={() => setInvoiceOpen(true)}>Importar nota fiscal</button>
             <button className="button" onClick={() => setCapture(true)}>
               Importar do Sky
             </button>
@@ -264,6 +267,7 @@ export function Stock() {
           onClose={() => setAdding(false)}
         />
       )}
+      {invoiceOpen && <StockInvoiceImport onClose={() => setInvoiceOpen(false)} />}
       {entry !== undefined && (
         <StockEntry
           initial={entry || undefined}
