@@ -3,7 +3,7 @@
   "framework": "vite",
   "env": {
     "PUBLIC_ORIGIN": "https://horse-power.vercel.app",
-    "APP_ORIGINS": "https://horse-power.vercel.app,https://oficinahorsepower.com.br"
+    "APP_ORIGINS": "https://horse-power.vercel.app,https://oficinahorsepower.com.br,https://sistema.oficinahorsepower.com.br"
   },
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
@@ -18,6 +18,26 @@
   },
   "rewrites": [
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "oficinahorsepower.com.br"
+        }
+      ],
+      "destination": "/site/index.html"
+    },
+    {
+      "source": "/contato",
+      "has": [
+        {
+          "type": "host",
+          "value": "oficinahorsepower.com.br"
+        }
+      ],
+      "destination": "/site/contato.html"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api"
     },
@@ -26,8 +46,8 @@
       "destination": "/privacidade.html"
     },
     {
-      "source": "/((?!api/|assets/|brand/|downloads/|favicon|privacidade\\.html$).*)",
-      "destination": "/index.html"
+      "source": "/((?!api/|assets/|brand/|downloads/|site/|favicon|privacidade\\.html$).*)",
+      "destination": "/app.html"
     }
   ],
   "headers": [
@@ -47,6 +67,19 @@
           "value": "DENY"
         }
       ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/contato.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "oficinahorsepower.com.br"
+        }
+      ],
+      "destination": "/contato",
+      "permanent": true
     }
   ]
 }
