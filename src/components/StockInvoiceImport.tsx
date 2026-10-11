@@ -302,6 +302,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
                           <div className="field full">
                             <span>Produto que receberá a entrada</span>
                             <CatalogPicker
+                              inlineResults
                               items={products}
                               value={c.catalog_id}
                               onChange={(catalog_id) =>

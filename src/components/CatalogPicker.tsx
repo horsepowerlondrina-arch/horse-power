@@ -13,12 +13,14 @@ export function CatalogPicker({
   onChange,
   kind,
   extensionOnly = false,
+  inlineResults = false,
 }: {
   items: Entity[];
   value: string;
   onChange: (id: string) => void;
   kind: string;
   extensionOnly?: boolean;
+  inlineResults?: boolean;
 }) {
   const listId = useId();
   const [query, setQuery] = useState("");
@@ -105,7 +107,7 @@ export function CatalogPicker({
         />
       </div>
       {open && (
-        <div className="catalog-dropdown">
+        <div className="catalog-dropdown" style={inlineResults ? { position: "static", marginTop: 4 } : undefined}>
           <div className="catalog-search-count" role="status">
             {matches.length} {kind === "product" ? "produtos" : "serviços"}{" "}
             encontrados
