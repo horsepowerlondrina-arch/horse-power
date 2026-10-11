@@ -4,7 +4,11 @@ import { randomUUID } from "node:crypto";
 import { createDatabase } from "../server/db/database";
 import { digest } from "../server/auth/session";
 import { enableExtensionCatalog } from "../server/services/catalogReset";
-import { beginCapture, importCapture } from "../server/services/extension";
+import {
+  beginCapture,
+  importCapture,
+  finishCapture,
+} from "../server/services/extension";
 import { saveOrder, listOrders } from "../server/services/workshop";
 import { createApp } from "../server/app";
 const ctx = { tenantId: "a", userId: "u", role: "owner" };
@@ -81,6 +85,16 @@ test("reset hides the old catalog, preserves documents and stock, isolates tenan
       brand: "Marca",
       cost: 1500,
     });
+    assert.equal(
+      db.prepare("SELECT COUNT(*) n FROM service_times").get()!.n,
+      0,
+    );
+    await finishCapture(db, ctx, "fresh");
+    assert.equal(
+      db.prepare("SELECT duration_seconds FROM service_times").get()!
+        .duration_seconds,
+      1800,
+    );
     assert.equal((await enableExtensionCatalog(db, ctx)).changed, false);
     assert.equal(
       db
@@ -168,6 +182,16 @@ test("HTTP hides archived catalog and times, permits new manual creation but blo
     assert.equal(r.status, 400);
     const connection = await beginCapture(db, ctx, "order", "session");
     await importCapture(db, connection.token, capture());
+    assert.equal(
+      (await (await fetch(base + "/service-times", { headers })).json()).length,
+      0,
+    );
+    await finishCapture(db, ctx, "order");
+    assert.equal(
+      db.prepare("SELECT duration_seconds FROM service_times").get()!
+        .duration_seconds,
+      1800,
+    );
     const imported = db
       .prepare(
         "SELECT id FROM catalog WHERE tenant_id='a' AND archived_at IS NULL",
