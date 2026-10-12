@@ -1,4 +1,5 @@
 import { money, statusLabel, type Entity } from "../lib/types";
+import { DocumentHeader } from "./DocumentHeader";
 
 function fullDate(value?: string) {
   if (!value) return "—";
@@ -14,11 +15,13 @@ export function OrderPrint({
   tenant,
   customer,
   vehicle,
+  publicView = false,
 }: {
   order: Entity;
   tenant: Entity;
   customer?: Entity;
   vehicle?: Entity;
+  publicView?: boolean;
 }) {
   const items = order.items || [];
   const products = items.filter((i: Entity) => i.kind === "product");
@@ -55,20 +58,8 @@ export function OrderPrint({
     "—";
 
   return (
-    <section className="print-only hp-print-order">
-      <header className="hp-print-header">
-        <img
-          className="hp-print-logo"
-          src="/brand/icon.jpg"
-          alt="Horse Power Car Service"
-        />
-        <div className="hp-print-company">
-          <h1>{tenant.name}</h1>
-          <p>{tenant.address || "Londrina/PR"}</p>
-          <p>EMAIL: {tenant.email || "horsepowerlondrina@gmail.com"}</p>
-        </div>
-        <strong className="hp-print-phone">{tenant.phone || ""}</strong>
-      </header>
+    <section className={`${publicView ? "customer-document" : "print-only"} workshop-document hp-print-order`}>
+      <DocumentHeader shop={tenant} />
 
       <div className="hp-print-titlebar">
         <strong>
@@ -81,19 +72,19 @@ export function OrderPrint({
 
       <section className="hp-print-customer">
         <div><b>Cliente:</b> {customerName}</div>
-        <div><b>Endereço:</b> {customerAddress}</div>
-        <div className="hp-print-two">
+        {!publicView && <div><b>Endereço:</b> {customerAddress}</div>}
+        {!publicView && <div className="hp-print-two">
           <span><b>Telefones:</b> {customerPhone}</span>
           <span><b>Docs:</b> {customerDocument}</span>
-        </div>
+        </div>}
         <div className="hp-print-two">
           <span><b>Veículo:</b> {vehicleLabel}</span>
           <span><b>Placa:</b> {plate}</span>
         </div>
-        <div className="hp-print-two">
+        {!publicView && <div className="hp-print-two">
           <span><b>KM:</b> {Number(order.km || 0).toLocaleString("pt-BR")}</span>
           <span><b>Chassi:</b> {chassis}</span>
-        </div>
+        </div>}
       </section>
 
       <section className="hp-print-section">
@@ -159,7 +150,7 @@ export function OrderPrint({
         </table>
       </section>
 
-      {(order.problem || order.notes) && (
+      {!publicView && (order.problem || order.notes) && (
         <section className="hp-print-notes">
           {order.problem && (
             <p><b>Relato do cliente:</b> {order.problem}</p>
@@ -171,7 +162,8 @@ export function OrderPrint({
       )}
 
       <footer className="hp-print-footer">
-        <div className="hp-print-dates">
+        {!publicView && (
+<div className="hp-print-dates">
           <p><b>DATA ENTRADA:</b> {fullDate(order.entered_on)}</p>
           <p><b>DATA FINALIZAÇÃO:</b> {fullDate(order.completed_on)}</p>
           <div className="hp-print-signature">
@@ -183,6 +175,7 @@ export function OrderPrint({
             Assinatura Cliente
           </div>
         </div>
+        )}
         <div className="hp-print-totalbox">
           <h2>TOTAL</h2>
           <div><span>TOTAL SERVIÇOS:</span><strong>{money(serviceTotal)}</strong></div>

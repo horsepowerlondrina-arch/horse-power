@@ -20,6 +20,7 @@ export function migrate(db: DatabaseSync) {
     [17, "017-credit-card-settlement.sql"],
     [18, "018-stock-invoices.sql"],
     [19, "019-suppliers.sql"],
+    [20, "020-workshop-profile.sql"],
   ] as const) {
     if (db.prepare("SELECT 1 FROM migrations WHERE version=?").get(version))
       continue;

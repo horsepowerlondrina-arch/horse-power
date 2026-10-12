@@ -5,6 +5,7 @@ import { PublicOrder } from "./pages/PublicOrder";
 import { Activate } from "./pages/Activate";
 import { App } from "./App";
 import "./styles.css";
+import "./document.css";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>

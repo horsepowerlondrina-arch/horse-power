@@ -276,7 +276,7 @@ export function App() {
       ].slice(0, 10)
     : [];
   return (
-    <AppContext.Provider value={{ data, session, refresh, notify: setToast }}>
+    <AppContext.Provider value={{ data, session, refresh, refreshSession: async () => setSession(await api<Session>("/session")), notify: setToast }}>
       <div className="app-shell">
         {mobile && (
           <button

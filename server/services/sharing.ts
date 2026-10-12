@@ -61,7 +61,7 @@ export async function readShare(db: DB, token: string) {
     ? await scoped(db, "vehicles", String(s.tenant_id), o.vehicle_id)
     : null;
   const shop = await db
-    .prepare("SELECT name,phone,address FROM tenants WHERE id=?")
+    .prepare("SELECT name,legal_name,document,phone,email,address,city,state,document_logo FROM tenants WHERE id=?")
     .get(s.tenant_id);
   return {
     shop,

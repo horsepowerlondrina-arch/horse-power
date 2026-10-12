@@ -4,6 +4,7 @@ export const AppContext = createContext<{
   data: Workspace;
   session: Session;
   refresh: () => Promise<void>;
+  refreshSession: () => Promise<void>;
   notify: (message: string) => void;
 }>(null!);
 export const useApp = () => useContext(AppContext);

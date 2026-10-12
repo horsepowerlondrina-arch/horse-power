@@ -1,0 +1,83 @@
+/* Shared letterhead and document layout for print, preview and customer pages. */
+.document-header { display:grid; grid-template-columns:100px minmax(0,1fr) auto; gap:20px; align-items:center; padding:18px 0; border-bottom:3px solid var(--red,#d51e2c); color:#20242b; }
+.document-header .document-logo { width:100px; height:100px; object-fit:contain; }
+.document-monogram { width:88px; height:88px; display:grid; place-items:center; background:#f3f4f6; font-size:28px; font-weight:700; border-radius:8px; }
+.document-header .document-company h1 { margin:0 0 6px; font-size:24px; line-height:1.15; overflow-wrap:anywhere; }
+.document-header .document-company p { margin:3px 0; font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.document-header .document-contact { display:flex; flex-direction:column; gap:5px; text-align:right; max-width:180px; overflow-wrap:anywhere; }
+.document-contact small { color:#646b75; font-size:10px; }
+.document-contact strong { font-size:14px; }
+.workshop-profile-preview { border:1px solid #e3e6ea; border-radius:8px; padding:0 20px; margin:12px 0 20px; background:white; }
+.customer-document-page { max-width:960px; margin:0 auto; padding:24px; }
+.customer-document-actions { display:flex; justify-content:flex-end; margin-bottom:14px; }
+.customer-document-terms { margin:20px 0; color:#626a76; font-size:12px; line-height:1.6; }
+.workshop-document { color:#20242b; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:1.5; box-sizing:border-box; }
+.workshop-document * { box-sizing:border-box; }
+.customer-document { background:white; border:1px solid #e2e5e9; border-radius:10px; padding:26px; }
+.workshop-document .hp-print-titlebar { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin:14px 0; padding:10px 12px; border:1px solid #e0e3e7; background:#f6f7f9; font-size:12px; }
+.workshop-document .hp-print-customer,.workshop-document .checklist-print-grid { display:grid; gap:7px; padding:12px 0 16px; border-bottom:1px solid #e0e3e7; }
+.workshop-document .hp-print-two { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
+.workshop-document .hp-print-section { margin-top:18px; break-inside:auto; }
+.workshop-document .hp-print-section h2,.workshop-document section>h2 { margin:14px 0 8px; font-size:13px; font-weight:700; color:#20242b; }
+.workshop-document .hp-print-table { width:100%; border-collapse:collapse; table-layout:fixed; margin:0; }
+.workshop-document .hp-print-table th,.workshop-document .hp-print-table td { padding:9px 8px; border-bottom:1px solid #e0e3e7; white-space:normal; overflow-wrap:anywhere; font-size:12px; color:#20242b; text-align:left; }
+.workshop-document .hp-print-table thead th { background:#f6f7f9; font-weight:700; }
+.workshop-document .hp-print-table tfoot th { border-top:1px solid #aeb5bf; font-weight:700; }
+.workshop-document .hp-print-table td:last-child,.workshop-document .hp-print-table th:last-child { text-align:right; }
+.workshop-document .hp-print-services th:last-child { width:27%; }
+.workshop-document .hp-print-products th:nth-child(2) { width:22%; }
+.workshop-document .hp-print-products th:nth-child(3) { width:11%; }
+.workshop-document .hp-print-products th:nth-child(4) { width:24%; }
+.workshop-document .hp-print-products td:nth-child(2),.workshop-document .hp-print-products td:nth-child(3) { text-align:right; }
+.workshop-document .hp-print-notes { margin:18px 0; padding:10px 0; border-bottom:1px solid #e0e3e7; white-space:pre-wrap; overflow-wrap:anywhere; }
+.workshop-document .hp-print-footer { display:grid; grid-template-columns:minmax(0,1fr) minmax(250px,40%); gap:24px; margin-top:22px; break-inside:avoid; }
+.workshop-document.customer-document .hp-print-footer { display:flex; justify-content:flex-end; }
+.workshop-document .hp-print-totalbox { min-width:250px; padding:14px; border:1px solid #b7bec8; border-radius:5px; background:#fafbfc; }
+.workshop-document .hp-print-totalbox h2 { margin:0 0 10px; font-size:14px; }
+.workshop-document .hp-print-totalbox>div { display:flex; justify-content:space-between; gap:12px; padding:4px 0; font-size:11px; }
+.workshop-document .hp-print-grand-total { margin-top:8px; padding-top:10px!important; border-top:2px solid #555d68; }
+.workshop-document .hp-print-grand-total strong { font-size:16px; }
+.workshop-document .hp-print-signature { text-align:center; margin-top:20px; font-size:11px; }
+.workshop-document .hp-print-signature span { display:block; margin-bottom:5px; border-top:1px solid #777; }
+.workshop-document .checklist-print-photos-section { break-inside:auto; }
+@media (max-width:600px) {
+ .document-header { grid-template-columns:70px minmax(0,1fr); gap:12px; }
+ .document-header .document-logo { width:70px; height:70px; }
+ .document-header .document-company h1 { font-size:19px; }
+ .document-header .document-contact { grid-column:1/-1; max-width:none; text-align:left; }
+ .customer-document-page { padding:12px; }
+ .customer-document { padding:14px; }
+ .workshop-document .hp-print-two { grid-template-columns:1fr; gap:6px; }
+ .workshop-document .hp-print-table th,.workshop-document .hp-print-table td { padding:7px 3px; font-size:11px; }
+ .workshop-profile-preview { padding:0 12px; }
+}
+@media print {
+ .customer-document-page { max-width:none; margin:0; padding:0; }
+ .workshop-document { font-size:10pt; line-height:1.35; }
+ .workshop-document.customer-document { border:0; border-radius:0; padding:0; }
+ .workshop-document .document-header { grid-template-columns:26mm minmax(0,1fr) 42mm; gap:4mm; padding:2mm 0 4mm; border-bottom:1.2pt solid #444; break-inside:avoid; }
+ .workshop-document .document-header .document-logo { width:25mm; height:25mm; }
+ .workshop-document .document-header .document-company h1 { font-size:19pt; }
+ .workshop-document .document-header .document-company p { font-size:9pt; margin:1mm 0; }
+ .workshop-document .document-header .document-contact { grid-column:auto; text-align:right; max-width:42mm; }
+ .workshop-document .document-contact strong { font-size:10pt; }
+ .workshop-document .hp-print-titlebar { font-size:9pt; margin:3mm 0; padding:2mm; }
+ .workshop-document .hp-print-table th,.workshop-document .hp-print-table td { padding:2mm; font-size:9pt; }
+ .workshop-document .hp-print-two { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+ .workshop-document .hp-print-footer { grid-template-columns:minmax(0,1fr) 76mm; gap:5mm; }
+ .workshop-document .hp-print-totalbox { min-width:65mm; padding:3mm; }
+ .workshop-document .hp-print-totalbox>div { font-size:9pt; }
+ .workshop-document .hp-print-table thead { display:table-header-group; }
+ .workshop-document .hp-print-table tr,.workshop-document .checklist-print-photos figure { break-inside:avoid; }
+ @page { size:A4; margin:10mm 12mm; }
+}
+
+/* Keep long totals inside the amount box on paper and narrow screens. */
+.workshop-document .hp-print-customer { overflow-wrap:anywhere; }
+.workshop-document .hp-print-totalbox span { min-width:0; white-space:normal; }
+.workshop-document .hp-print-grand-total span { font-size:12px!important; }
+.workshop-document .hp-print-grand-total strong { font-size:16px!important; white-space:nowrap; }
+@media print {
+ .workshop-document .hp-print-grand-total span { font-size:10pt!important; }
+ .workshop-document .hp-print-grand-total strong { font-size:13pt!important; }
+}

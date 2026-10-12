@@ -5,7 +5,7 @@ import { send } from "../lib/api";
 import { money, type Order } from "../lib/types";
 import { Modal, Field } from "./ui";
 export function ShareOrder({ order }: { order: Order }) {
-  const { data } = useApp();
+  const { data, session } = useApp();
   const customer = data.customers.find((c) => c.id === order.customer_id);
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
@@ -24,7 +24,7 @@ export function ShareOrder({ order }: { order: Order }) {
     ),
     [message, setMessage] = useState("");
   const text = (link: string, type: string) =>
-    `Olá${order.customer_name && order.customer_name !== "Cliente não informado" ? ", " + order.customer_name.split(" ")[0] : ""}! Aqui é da Horse Power.\n\n${type === "quote" ? `Seu orçamento #${order.number} está pronto. Total: ${money(order.total)}.` : type === "ready" ? `O serviço do seu veículo ${order.plate} foi concluído. Entre em contato para combinar a retirada.` : `Confira a atualização do atendimento #${order.number} do seu veículo ${order.plate}.`}\n\nVeja os serviços, peças e valores: ${link}\n\nQualquer dúvida, estamos à disposição!`;
+    `Olá${order.customer_name && order.customer_name !== "Cliente não informado" ? ", " + order.customer_name.split(" ")[0] : ""}! Aqui é da ${session.tenant.name}.\n\n${type === "quote" ? `Seu orçamento #${order.number} está pronto. Total: ${money(order.total)}.` : type === "ready" ? `O serviço do seu veículo ${order.plate} foi concluído. Entre em contato para combinar a retirada.` : `Confira a atualização do atendimento #${order.number} do seu veículo ${order.plate}.`}\n\nVeja os serviços, peças e valores: ${link}\n\nQualquer dúvida, estamos à disposição!`;
   async function prepare() {
     setOpen(true);
     setBusy(true);

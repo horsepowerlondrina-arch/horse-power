@@ -1,6 +1,7 @@
 import { workshopDate } from "../lib/workflow";
 import { NumericInput } from "../components/NumericInput";
 import { PartsPricing } from "./PartsPricing";
+import { WorkshopProfile } from "../components/WorkshopProfile";
 import { RegisterModal } from "./Registers";
 import { CapturePanel } from "../components/CapturePanel";
 import { StockEntry } from "../components/StockEntry";
@@ -564,11 +565,12 @@ export function Settings() {
       />
       <div className="tabs">
         <button
-          className={params.get("aba") !== "pecas" ? "active" : ""}
+          className={!["pecas","oficina"].includes(params.get("aba") || "") ? "active" : ""}
           onClick={() => setParams({})}
         >
           Geral e taxas
         </button>
+        <button className={params.get("aba") === "oficina" ? "active" : ""} onClick={() => setParams({aba:"oficina"})}>Dados da oficina</button>
         <button
           className={params.get("aba") === "pecas" ? "active" : ""}
           onClick={() => setParams({ aba: "pecas" })}
@@ -576,7 +578,7 @@ export function Settings() {
           Lucro de peças e terceiros
         </button>
       </div>
-      {params.get("aba") === "pecas" ? (
+      {params.get("aba") === "oficina" ? <WorkshopProfile key={session.tenant.id} /> : params.get("aba") === "pecas" ? (
         <PartsPricing />
       ) : (
         <>
@@ -680,8 +682,8 @@ export function Settings() {
               <p>{session.tenant.address}</p>
               <p>{session.tenant.phone}</p>
               <div className="info-box">
-                Os dados pertencem à Horse Power. A configuração definitiva do
-                login será feita em uma próxima etapa.
+                Edite o nome, contatos e logotipo em Dados da oficina. Essas
+                informações identificam os documentos e a página do cliente.
               </div>
             </section>
             <section className="panel settings-card">
@@ -690,8 +692,7 @@ export function Settings() {
               <p>{session.user.name} · Administrador</p>
               <p>{session.user.email}</p>
               <p className="muted">
-                Gestão de convites, edição da empresa e permissões detalhadas
-                serão adicionadas na próxima etapa.
+                Convites e permissões detalhadas serão adicionados em uma próxima etapa.
               </p>
             </section>
             <section className="panel settings-card">

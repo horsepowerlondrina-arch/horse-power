@@ -1,4 +1,5 @@
 import type { Entity } from "../lib/types";
+import { DocumentHeader } from "./DocumentHeader";
 
 const conditionLabels: Record<string, string> = {
   ok: "OK",
@@ -27,18 +28,9 @@ export function ChecklistPrint({
   const damages = checklist.damages || [];
   const photos = checklist.photos || [];
   return (
-    <section className="print-only checklist-print">
-      <header className="checklist-print-header">
-        <img src="/brand/horse-power.jpg" alt="Horse Power Car Service" />
-        <div>
-          <h1>CHECKLIST DE ENTRADA</h1>
-          <p>{tenant.name}</p>
-          <p>
-            {tenant.address || ""}
-            {tenant.phone ? ` · ${tenant.phone}` : ""}
-          </p>
-        </div>
-      </header>
+    <section className="print-only workshop-document checklist-print">
+      <DocumentHeader shop={tenant} />
+      <div className="hp-print-titlebar"><strong>CHECKLIST DE ENTRADA</strong><span>{checklist.order_number ? `${checklist.order_kind === "quote" ? "Orçamento" : "OS"} #${checklist.order_number}` : ""}</span></div>
 
       <div className="checklist-print-grid">
         <div><b>Cliente:</b> {checklist.customer_name}</div>
