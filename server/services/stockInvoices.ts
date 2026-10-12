@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { invoiceSupplierPreview, ensureInvoiceSupplier } from "./suppliers.js";
 import { z } from "zod";
 import { transaction, type DB } from "../db/database.js";
 import type { Context } from "../auth/session.js";
@@ -136,6 +137,7 @@ export async function previewStockInvoice(db: DB, ctx: Context, xml: string) {
   return {
     ...invoice,
     items,
+    supplier_record: await invoiceSupplierPreview(db, ctx, invoice),
     already_imported: !!old,
     summary: old ? JSON.parse(old.summary) : null,
   };
@@ -145,6 +147,7 @@ export async function importStockInvoice(
   ctx: Context,
   xml: string,
   input: unknown,
+  supplierInput?: unknown,
 ) {
   const invoice = await checkedInvoice(db, ctx, xml),
     choices = stockInvoiceChoices.parse(input);
@@ -169,6 +172,7 @@ export async function importStockInvoice(
         );
       return { ...JSON.parse(old.summary), duplicate: true };
     }
+    const supplierId = await ensureInvoiceSupplier(db, ctx, invoice, supplierInput);
     let created = 0,
       updated = 0,
       quantityTotal = 0;
@@ -296,6 +300,8 @@ export async function importStockInvoice(
             catalogId,
             choice.quantity / item.quantity,
           );
+      await db.prepare("UPDATE stock_invoice_products SET supplier_id=?,last_cost=CASE WHEN last_purchase_on<=? THEN ? ELSE last_cost END,last_purchase_on=CASE WHEN last_purchase_on<=? THEN ? ELSE last_purchase_on END WHERE tenant_id=? AND supplier_document=? AND supplier_code=? AND unit=?")
+        .run(supplierId,invoice.issuedOn,invoiceCost,invoice.issuedOn,invoice.issuedOn,ctx.tenantId,invoice.document,item.code,item.unit);
       const movement = id();
       await db
         .prepare(
@@ -351,10 +357,11 @@ export async function importStockInvoice(
         movements,
         number: invoice.number,
         supplier: invoice.supplier,
+        supplier_id: supplierId,
       };
     await db
       .prepare(
-        "INSERT INTO stock_invoices(id,tenant_id,invoice_key,supplier_document,supplier_name,invoice_number,issued_on,xml_hash,summary,user_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO stock_invoices(id,tenant_id,invoice_key,supplier_document,supplier_name,invoice_number,issued_on,xml_hash,summary,user_id,supplier_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         record,
@@ -367,6 +374,7 @@ export async function importStockInvoice(
         hash(xml),
         JSON.stringify(summary),
         ctx.userId,
+        supplierId,
       );
     await audit(db, ctx, "stock_invoice.imported", record);
     return { ...summary, duplicate: false };

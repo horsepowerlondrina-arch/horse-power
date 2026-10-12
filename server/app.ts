@@ -63,6 +63,7 @@ import {
 } from "./services/cashControl.js";
 import { requireAdmin } from "./services/payments.js";
 import { previewStockInvoice, importStockInvoice } from "./services/stockInvoices.js";
+import { listSuppliers, supplierDetails, saveSupplier } from "./services/suppliers.js";
 import { calculatePlan, paymentMethods } from "./domain/payments.js";
 import { lookupVehicle, providerToken } from "./services/vehicleLookup.js";
 const text = z.string().trim().max(500).default("");
@@ -404,6 +405,7 @@ export function createApp(db: DB) {
           "SELECT v.*,c.name customer_name FROM vehicles v JOIN customers c ON c.id=v.customer_id AND c.tenant_id=v.tenant_id WHERE v.tenant_id=? ORDER BY v.plate",
         )
         .all(tenant),
+      suppliers: await listSuppliers(db, res.locals.context),
       product_categories: await listProductCategories(db, res.locals.context),
       catalog: await db
         .prepare(
@@ -1158,13 +1160,25 @@ export function createApp(db: DB) {
     app.post(`/api/${table}`, handler);
     app.put(`/api/${table}/:id`, handler);
   }
+  app.get("/api/suppliers", async (_req,res) => {
+    res.json(await listSuppliers(db,res.locals.context));
+  });
+  app.get("/api/suppliers/:id", async (req,res) => {
+    res.json(await supplierDetails(db,res.locals.context,String(req.params.id)));
+  });
+  app.post("/api/suppliers", async (req,res) => {
+    res.status(201).json({id:await saveSupplier(db,res.locals.context,req.body)});
+  });
+  app.put("/api/suppliers/:id", async (req,res) => {
+    res.json({id:await saveSupplier(db,res.locals.context,req.body,String(req.params.id))});
+  });
   app.post("/api/stock-invoices/preview", async (req, res) => {
     const input = z.object({xml:z.string().min(1).max(2*1024*1024)}).parse(req.body);
     res.json(await previewStockInvoice(db,res.locals.context,input.xml));
   });
   app.post("/api/stock-invoices/import", async (req, res) => {
-    const input = z.object({xml:z.string().min(1).max(2*1024*1024),choices:z.unknown()}).parse(req.body);
-    res.json(await importStockInvoice(db,res.locals.context,input.xml,input.choices));
+    const input = z.object({xml:z.string().min(1).max(2*1024*1024),choices:z.unknown(),supplier:z.unknown().optional()}).parse(req.body);
+    res.json(await importStockInvoice(db,res.locals.context,input.xml,input.choices,input.supplier));
   });
   app.post("/api/stock/:id", async (req, res) => {
     const ctx: Context = res.locals.context;
@@ -1306,7 +1320,7 @@ export function createApp(db: DB) {
     res.status(404).json({ error: "Recurso não encontrado." }),
   );
   app.use(express.static(resolve("dist")));
-  app.get("/{*path}", (_req, res) => res.sendFile(resolve("dist/index.html")));
+  app.get("/{*path}", (_req, res) => res.sendFile(resolve("dist/app.html")));
   app.use(
     (
       error: any,

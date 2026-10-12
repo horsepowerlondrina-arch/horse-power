@@ -1,6 +1,7 @@
 import { advanceOnEnter } from "./lib/enterNavigation";
 import { CashControl } from "./pages/CashControl";
 import { PeopleRegisters } from "./pages/PeopleRegisters";
+import { Suppliers } from "./pages/Suppliers";
 import { ServicesProfit } from "./pages/ServicesProfit";
 import { PartsProfit } from "./pages/PartsProfit";
 import { Home } from "./pages/Home";
@@ -171,6 +172,7 @@ export function App() {
         ["/cadastros", "Clientes e veículos", Users],
         ["/catalogo", "Produtos e serviços", Package],
         ["/profissionais", "Profissionais", Wrench],
+        ["/fornecedores", "Fornecedores", Package],
       ],
     },
     {
@@ -451,6 +453,7 @@ export function App() {
                   element={<Registers kind="professionals" />}
                 />
                 <Route path="/cadastros" element={<PeopleRegisters />} />
+                <Route path="/fornecedores" element={admin ? <Suppliers /> : <Navigate to="/ordens" replace />} />
                 <Route
                   path="/tempos"
                   element={<Navigate to="/catalogo" replace />}

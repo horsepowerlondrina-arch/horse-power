@@ -34,6 +34,7 @@ export function postgresSql(input: string) {
     "order_items",
     "stock_movements",
     "stock_invoices",
+    "suppliers",
     "stock_invoice_products",
     "receivables",
     "cash_entries",

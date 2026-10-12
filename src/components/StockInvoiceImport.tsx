@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SupplierFields, type SupplierDraft } from "./SupplierFields";
 import { useApp } from "../lib/context";
 import { send } from "../lib/api";
 import { money, type Entity } from "../lib/types";
@@ -37,6 +38,7 @@ type Preview = {
   issuedOn: string;
   items: Line[];
   already_imported: boolean;
+  supplier_record: { existing: boolean; draft: SupplierDraft };
 };
 type Choice = {
   brand: string;
@@ -56,6 +58,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
   const [xml, setXml] = useState(""),
     [preview, setPreview] = useState<Preview | null>(null),
     [choices, setChoices] = useState<Choice[]>([]);
+  const [supplier, setSupplier] = useState<SupplierDraft | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const products = data.catalog.filter(
@@ -71,6 +74,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
     if (!file) return;
     setError("");
     setPreview(null);
+    setSupplier(null);
     setChoices([]);
     setXml("");
     setBusy(true);
@@ -93,6 +97,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
       });
       setXml(content);
       setPreview(result);
+      setSupplier({ ...result.supplier_record.draft, document: result.supplier_record.draft.document || "" });
       setChoices(
         result.items.map((item) => ({
           line: item.line,
@@ -115,6 +120,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
     }
   };
   const valid =
+    !!supplier?.name.trim() &&
     choices.length > 0 &&
     choices.every(
       (c) =>
@@ -137,6 +143,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
     try {
       const result = await send("/stock-invoices/import", {
         xml,
+        supplier,
         choices: choices.map((c) => ({
           ...c,
           catalog_id: c.mode === "existing" ? c.catalog_id : "",
@@ -197,6 +204,11 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
                   O código do fornecedor será vinculado ao produto escolhido
                   para as próximas notas.
                 </p>
+                {supplier && <details>
+                  <summary>{preview.supplier_record.existing ? "Fornecedor cadastrado · conferir ou editar dados" : "Novo fornecedor · conferir dados do XML"}</summary>
+                  <p>Os dados serão salvos somente ao confirmar a importação da nota.</p>
+                  <SupplierFields value={supplier} onChange={setSupplier} documentReadOnly disabled={busy} />
+                </details>}
                 {preview.items.map((item, index) => {
                   const c = choices[index];
                   if (!c) return null;

@@ -14,6 +14,7 @@ export type StockInvoice = {
   key: string;
   number: string;
   supplier: string;
+  supplierData: { name: string; trade_name: string; document: string; phone: string; email: string; address: string; number: string; complement: string; district: string; city: string; state: string; postal_code: string; seller: string; notes: string };
   document: string;
   recipient: string;
   issuedOn: string;
@@ -263,6 +264,14 @@ export function parseStockInvoice(xml: string): StockInvoice {
     issuedOn,
     document,
     supplier: text(emit.xNome),
+    supplierData: {
+      name: text(emit.xNome, 200), trade_name: text(emit.xFant, 200), document,
+      phone: text(emit.enderEmit?.fone, 40), email: "",
+      address: text(emit.enderEmit?.xLgr, 200), number: text(emit.enderEmit?.nro, 30),
+      complement: text(emit.enderEmit?.xCpl, 100), district: text(emit.enderEmit?.xBairro, 100),
+      city: text(emit.enderEmit?.xMun, 100), state: text(emit.enderEmit?.UF, 2),
+      postal_code: text(emit.enderEmit?.CEP, 12), seller: "", notes: "",
+    },
     recipient: text(inf.dest?.CNPJ || inf.dest?.CPF, 14),
     items: [...groups.values()],
   };
