@@ -282,8 +282,7 @@ export function Stock() {
           onClose={async (items) => {
             await refresh();
             setCapture(false);
-            if (items.length === 1) setEntry(items[0]);
-            else if (items.length)
+            if (items.length)
               notify(
                 "Produtos importados. Use Entrada em estoque para confirmar as quantidades recebidas.",
               );

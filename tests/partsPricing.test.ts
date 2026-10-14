@@ -88,6 +88,7 @@ test("catalog capture applies freight and tenant policy, preserves order costs a
     assert.equal(state.items[0].price, 29725);
     assert.equal(state.items[0].freight_unit, 500);
     assert.equal(state.items[0].stock, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM stock_movements").get()!.n, 0);
     assert.deepEqual(db.prepare("SELECT * FROM order_items").get(), snapshot);
     assert.equal(
       (await catalogCaptureState(db, { ...ctx, tenantId: "b" }, target)).items
@@ -116,6 +117,10 @@ test("catalog capture applies freight and tenant policy, preserves order costs a
     assert.equal(second.cost, 30300);
     assert.equal(second.freight_unit, 300);
     assert.equal(second.price, 60600);
+    db.prepare("UPDATE catalog SET stock=7,stock_verified=1 WHERE id=?").run(state.items[0].id);
+    await importCapture(db, catalog.token, { ...part(20000), quantity: 9 });
+    assert.equal(db.prepare("SELECT stock FROM catalog WHERE id=?").get(state.items[0].id)!.stock, 7);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM stock_movements").get()!.n, 0);
     assert.deepEqual(db.prepare("SELECT * FROM order_items").get(), snapshot);
     await catalogCaptureState(db, ctx, target, true);
     await assert.rejects(importCapture(db, catalog.token, part()), /expirada/);
@@ -137,6 +142,14 @@ test("stock receipt is atomic and idempotent, saves landed cost and sale, and re
   const call = (path: string, body: any, method = "POST") =>
     fetch(base + path, { method, headers, body: JSON.stringify(body) });
   try {
+    const rejected = await call("/catalog", {
+      kind: "product", name: "Estoque pelo cadastro", sku: "BLOCKED",
+      cost: 1200, price: 2160, stock: 5, minimum_stock: 0,
+    });
+    assert.equal(rejected.status, 400);
+    assert.match((await rejected.json()).error, /estoque zero/);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM catalog WHERE sku='BLOCKED'").get()!.n, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM stock_movements").get()!.n, 0);
     const created = await call("/catalog", {
       kind: "product",
       name: "Peça manual",

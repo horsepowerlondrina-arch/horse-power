@@ -1120,6 +1120,8 @@ export function createApp(db: DB) {
           }
           if (old && old.stock !== input.stock)
             throw new Error("Use o ajuste de estoque para alterar o saldo.");
+          if (!old && input.stock !== 0)
+            throw new Error("Cadastre o produto com estoque zero. Use a nota fiscal ou os controles de estoque para registrar entradas.");
         }
         const recordId = record || id();
         const fields = Object.keys(input);
@@ -1138,19 +1140,6 @@ export function createApp(db: DB) {
                 .join(",")})`,
             )
             .run(recordId, ctx.tenantId, ...Object.values(input));
-        if (table === "catalog" && !old && input.stock > 0)
-          await db
-            .prepare(
-              "INSERT INTO stock_movements(id,tenant_id,catalog_id,quantity,reason,user_id) VALUES(?,?,?,?,?,?)",
-            )
-            .run(
-              id(),
-              ctx.tenantId,
-              recordId,
-              input.stock,
-              "Saldo inicial",
-              ctx.userId,
-            );
         await audit(
           db,
           ctx,

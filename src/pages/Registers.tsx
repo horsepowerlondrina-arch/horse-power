@@ -815,9 +815,6 @@ export function RegisterModal({
                 )}
                 {form.kind === "product" && (
                   <>
-                    {!record
-                      ? input("stock", "Estoque inicial", "number")
-                      : null}
                     {input("minimum_stock", "Estoque mínimo", "number")}
                   </>
                 )}
