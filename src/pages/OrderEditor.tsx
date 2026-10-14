@@ -200,9 +200,11 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     if (!form.customer_id && !name && customerPhone.trim())
       throw new Error("Informe também o nome do cliente.");
     let newVehicle;
-    if (form.status !== "quote") {
+    if (form.status !== "quote" || (!form.vehicle_id && !!lookupPlate)) {
       if (!form.customer_id && !newCustomer)
-        throw new Error("Informe ou selecione o cliente da OS.");
+        throw new Error(
+          "Informe ou selecione o cliente para cadastrar o veículo junto com o atendimento.",
+        );
       if (!form.vehicle_id) {
         const plate = lookupPlate || form.guest_plate;
         if (
@@ -214,7 +216,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
           Number(lookedUp.year) > 2100
         )
           throw new Error(
-            "Informe a placa, marca, modelo e ano ou selecione um veículo cadastrado para a OS.",
+            "Confira a placa, marca, modelo e ano ou selecione um veículo cadastrado.",
           );
         newVehicle = {
           plate,
@@ -567,8 +569,9 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                     <>
                       {form.status === "quote" && (
                         <div className="info-box">
-                          Você pode salvar este orçamento sem cadastro. Vincule
-                          cliente e veículo antes de aprovar.
+                          {!form.vehicle_id && lookupPlate
+                            ? "Ao salvar, o veículo será cadastrado e vinculado ao cliente informado. Confira os dados abaixo."
+                            : "Você pode salvar este orçamento sem cadastro. Vincule cliente e veículo antes de aprovar."}
                         </div>
                       )}
                       <h3 className="form-section-title">
@@ -702,76 +705,99 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                             </select>
                           </Field>
                         )}
-                        {form.status === "quote" && !form.vehicle_id && (
-                          <Field label="Veículo (opcional)" full>
-                            <input
-                              value={form.guest_vehicle}
-                              onChange={(e) =>
-                                set("guest_vehicle", e.target.value)
-                              }
-                            />
-                          </Field>
-                        )}
-                        {form.status !== "quote" && !form.vehicle_id && (
-                          <>
-                            <p className="muted full">
-                              O veículo novo será cadastrado junto com a OS.
-                              Informe a placa no início do atendimento.
-                            </p>
-                            <Field label="Marca do veículo *">
+                        {form.status === "quote" &&
+                          !form.vehicle_id &&
+                          !lookupPlate && (
+                            <Field label="Veículo (opcional)" full>
                               <input
-                                maxLength={200}
-                                value={lookedUp.brand || ""}
+                                value={form.guest_vehicle}
                                 onChange={(e) =>
-                                  setLookedUp((v) => ({
-                                    ...v,
-                                    brand: e.target.value,
-                                  }))
+                                  set("guest_vehicle", e.target.value)
                                 }
                               />
                             </Field>
-                            <Field label="Modelo do veículo *">
-                              <input
-                                maxLength={200}
-                                value={lookedUp.model || ""}
-                                onChange={(e) =>
-                                  setLookedUp((v) => ({
-                                    ...v,
-                                    model: e.target.value,
-                                  }))
-                                }
-                              />
-                            </Field>
-                            <Field label="Ano do veículo *">
-                              <NumericInput
-                                type="number"
-                                min={1900}
-                                max={2100}
-                                value={lookedUp.year || ""}
-                                onChange={(e) =>
-                                  setLookedUp((v) => ({
-                                    ...v,
-                                    year: e.target.value
-                                      ? Number(e.target.value)
-                                      : "",
-                                  }))
-                                }
-                              />
-                            </Field>
-                            <Field label="Cor do veículo">
-                              <input
-                                maxLength={200}
-                                value={lookedUp.color || ""}
-                                onChange={(e) =>
-                                  setLookedUp((v) => ({
-                                    ...v,
-                                    color: e.target.value,
-                                  }))
-                                }
-                              />
-                            </Field>
-                          </>
-                        )}
+                          )}
+                        {!form.vehicle_id &&
+                          (form.status !== "quote" || !!lookupPlate) && (
+                            <>
+                              <p className="muted full">
+                                Confira e complete os dados. O veículo será
+                                cadastrado ao salvar o atendimento e ficará
+                                vinculado ao cliente informado.
+                              </p>
+                              {form.guest_vehicle &&
+                                !lookedUp.brand &&
+                                !lookedUp.model && (
+                                  <p className="muted full">
+                                    Veículo informado: {form.guest_vehicle}
+                                  </p>
+                                )}
+                              <Field label="Marca do veículo *">
+                                <input
+                                  maxLength={150}
+                                  value={lookedUp.brand || ""}
+                                  onChange={(e) =>
+                                    setLookedUp((v) => ({
+                                      ...v,
+                                      brand: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </Field>
+                              <Field label="Modelo do veículo *">
+                                <input
+                                  maxLength={150}
+                                  value={lookedUp.model || ""}
+                                  onChange={(e) =>
+                                    setLookedUp((v) => ({
+                                      ...v,
+                                      model: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </Field>
+                              <Field label="Ano do veículo *">
+                                <NumericInput
+                                  type="number"
+                                  min={1900}
+                                  max={2100}
+                                  value={lookedUp.year || ""}
+                                  onChange={(e) =>
+                                    setLookedUp((v) => ({
+                                      ...v,
+                                      year: e.target.value
+                                        ? Number(e.target.value)
+                                        : "",
+                                    }))
+                                  }
+                                />
+                              </Field>
+                              <Field label="Cor do veículo">
+                                <input
+                                  maxLength={200}
+                                  value={lookedUp.color || ""}
+                                  onChange={(e) =>
+                                    setLookedUp((v) => ({
+                                      ...v,
+                                      color: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </Field>
+                              <Field label="Chassi (se disponível)" full>
+                                <input
+                                  maxLength={500}
+                                  value={lookedUp.chassis || ""}
+                                  onChange={(e) =>
+                                    setLookedUp((v) => ({
+                                      ...v,
+                                      chassis: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </Field>
+                            </>
+                          )}
                         {!locked && form.customer_id && (
                           <button
                             type="button"

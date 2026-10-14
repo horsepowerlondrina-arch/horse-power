@@ -99,7 +99,24 @@ test("a guest quote preserves optional name and vehicle with a single plate inpu
   assert.match(html, /value="Nome completo avulso"/);
   assert.match(html, /Telefone \/ celular \*/);
   assert.match(html, /O cliente será cadastrado ao salvar/);
-  assert.match(html, /value="Veículo avulso"/);
+  assert.match(html, /Veículo informado: Veículo avulso/);
+  assert.match(html, /Marca do veículo \*/);
+  assert.match(html, /Modelo do veículo \*/);
+  assert.match(html, /Ano do veículo \*/);
+  assert.match(html, /Cor do veículo/);
+  assert.match(html, /Chassi \(se disponível\)/);
   assert.equal((html.match(/value="DEF4G56"/g) || []).length, 1);
   assert.doesNotMatch(html, /Veículo cadastrado \(opcional\)/);
+});
+test("a saved quote without plate remains available without registering a vehicle", () => {
+  const html = render("/ordens/o", {
+    id: "o",
+    status: "quote",
+    kind: "quote",
+    number: 1,
+    guest_vehicle: "Veículo de exemplo",
+    items: [],
+  });
+  assert.match(html, /value="Veículo de exemplo"/);
+  assert.doesNotMatch(html, /Marca do veículo \*/);
 });

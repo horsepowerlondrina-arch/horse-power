@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createDatabase } from "../server/db/database";
-import { saveOrder } from "../server/services/workshop";
+import { saveOrder, transitionOrder } from "../server/services/workshop";
 import { createApp } from "../server/app";
 import { digest } from "../server/auth/session";
 const ctx = { userId: "u", tenantId: "a", role: "owner" };
@@ -28,6 +28,67 @@ const input = (extra: Record<string, any> = {}) => ({
   items: [],
   new_customer: { name: "Cliente Novo", phone: "(43) 98888-2222" },
   ...extra,
+});
+test("quotes persist complete vehicle data for new and existing clients and reuse the registration on approval", async () => {
+  const db = fixture();
+  try {
+    for (const existing of [false, true]) {
+      const v = {
+        plate: existing ? "GHI7J89" : "DEF4G56",
+        brand: "Chevrolet",
+        model: "Onix LT",
+        year: 2020,
+        color: "Prata",
+        chassis: "9BG12345678901234",
+        km: 123,
+      };
+      const payload = input({
+        new_vehicle: v,
+        ...(existing
+          ? { customer_id: "existing", new_customer: undefined }
+          : {}),
+      });
+      const record = await saveOrder(db, ctx, payload);
+      const order = db.prepare("SELECT * FROM orders WHERE id=?").get(record)!;
+      const vehicle = db
+        .prepare("SELECT * FROM vehicles WHERE id=?")
+        .get(order.vehicle_id)!;
+      for (const key of [
+        "plate",
+        "brand",
+        "model",
+        "year",
+        "color",
+        "chassis",
+        "km",
+      ])
+        assert.equal(vehicle[key], (v as any)[key]);
+      assert.equal(vehicle.customer_id, order.customer_id);
+      if (existing) assert.equal(order.customer_id, "existing");
+      await saveOrder(db, ctx, payload, record);
+      assert.equal(
+        db
+          .prepare(
+            "SELECT COUNT(*) n FROM vehicles WHERE tenant_id='a' AND plate=?",
+          )
+          .get(v.plate)!.n,
+        1,
+      );
+      await transitionOrder(db, ctx, record, "open");
+      assert.equal(
+        db.prepare("SELECT vehicle_id FROM orders WHERE id=?").get(record)!
+          .vehicle_id,
+        vehicle.id,
+      );
+    }
+    assert.equal(
+      db.prepare("SELECT COUNT(*) n FROM stock_movements").get()!.n,
+      0,
+    );
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM receivables").get()!.n, 0);
+  } finally {
+    db.close();
+  }
 });
 test("saving a quote creates and links its customer, isolates tenants and reuses name plus phone on retries", async () => {
   const db = fixture();
