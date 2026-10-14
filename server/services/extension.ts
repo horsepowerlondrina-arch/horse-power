@@ -7,6 +7,7 @@ import { requireAdmin } from "./payments.js";
 import { audit, id, invalidateOrderShares, scoped } from "./workshop.js";
 import { serviceNameKey } from "./serviceCatalog.js";
 import { workshopPrice } from "./partsPricing.js";
+import { allocateFreight } from "../../shared/freight.js";
 const txt = z.string().trim().max(300).default("");
 export const captureSchema = z
   .object({
@@ -93,20 +94,10 @@ async function redistributeSkyFreight(
   if (totalBasis <= 0n)
     return { freight_total: freightTotal, item_count: rows.length };
 
-  let distributed = 0;
-  for (const row of rows) {
-    const numerator = BigInt(freightTotal) * row.basis;
-    row.share = Number(numerator / totalBasis);
-    row.remainder = numerator % totalBasis;
-    distributed += row.share;
-  }
-  const centsLeft = freightTotal - distributed;
-  const byRemainder = [...rows].sort((a, b) => {
-    if (a.remainder === b.remainder)
-      return String(a.capture.id).localeCompare(String(b.capture.id));
-    return a.remainder > b.remainder ? -1 : 1;
-  });
-  for (let i = 0; i < centsLeft; i++) byRemainder[i].share += 1;
+  const allocated = allocateFreight(rows.map(row => ({
+    id: String(row.capture.id), cost: Number(row.capture.source_cost), quantity: row.quantity,
+  })), freightTotal);
+  rows.forEach((row,index) => { row.share = allocated[index].freight_total; });
 
   for (const row of rows) {
     const sourceCost = Number(row.capture.source_cost);

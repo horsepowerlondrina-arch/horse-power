@@ -17,6 +17,7 @@ import {
 } from "./services/extension.js";
 import { listProductCategories, saveProductCategory, removeProductCategory, validProductCategory } from "./services/productCategories.js";
 import { assertUniqueService } from "./services/serviceCatalog.js";
+import { createProductBatch } from "./services/productBatch.js";
 import { generateExpenses, payExpense } from "./services/expenses.js";
 import { createShare, readShare } from "./services/sharing.js";
 import {
@@ -1163,6 +1164,9 @@ export function createApp(db: DB) {
     app.post(`/api/${table}`, handler);
     app.put(`/api/${table}/:id`, handler);
   }
+  app.post("/api/catalog-batch", async (req,res) => {
+    res.json(await createProductBatch(db,res.locals.context,req.body));
+  });
   app.get("/api/workshop-profile", async (_req,res) => {
     res.json(await getWorkshopProfile(db,res.locals.context));
   });

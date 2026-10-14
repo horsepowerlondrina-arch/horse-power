@@ -1,5 +1,6 @@
 import { productLabel, productDetails, matchesSearch } from "../../shared/productIdentity";
 import { ProductCategories } from "../components/ProductCategories";
+import { ProductBatch } from "../components/ProductBatch";
 import { NumericInput } from "../components/NumericInput";
 import { CapturePanel } from "../components/CapturePanel";
 import { useRef, useState, type ReactNode } from "react";
@@ -64,6 +65,7 @@ export function Registers({ kind }: { kind: Kind }) {
   const [editing, setEditing] = useState<Entity | null | undefined>();
   const c = config[kind];
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [capture, setCapture] = useState<"sky" | "tempario" | null>(null);
   const Icon = c.icon;
   const rows = data[kind].filter(
@@ -106,6 +108,9 @@ export function Registers({ kind }: { kind: Kind }) {
                 <Package size={18} />
                 Cadastrar produto
               </button>
+              <button className="button" onClick={() => { setType("product"); setBatchOpen(true); }}>
+                <Plus size={18} /> Cadastrar produtos
+              </button>
               <button
                 className="button"
                 onClick={() => {
@@ -140,6 +145,7 @@ export function Registers({ kind }: { kind: Kind }) {
         </div>
       )}
       {categoriesOpen && <ProductCategories onClose={() => setCategoriesOpen(false)} />}
+      {batchOpen && <ProductBatch onClose={() => setBatchOpen(false)} />}
       {capture && (
         <CapturePanel
           catalog
