@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, LoaderCircle } from "lucide-react";
 import { send } from "../lib/api";
 import { Field } from "./ui";
@@ -19,6 +19,15 @@ export function PlateField({
     [message, setMessage] = useState("");
   const request = useRef(0),
     last = useRef("");
+  useEffect(() => {
+    request.current++;
+    last.current = "";
+    setBusy(false);
+    setMessage("");
+    return () => {
+      request.current++;
+    };
+  }, [value, disabled]);
   const lookup = async (force = false) => {
     const plate = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(plate)) {
