@@ -47,9 +47,9 @@
 
   function fill(force = false) {
     if (!context?.connected || context.expires <= Date.now())
-      return "Conecte um orçamento na Horse Power para enviar a placa.";
+      return "Conecte uma OS na Horse Power para enviar a placa.";
     if (!validPlate(context.plate))
-      return "O orçamento ainda não tem uma placa válida.";
+      return "A OS ainda não tem uma placa válida.";
     const fields = plateFields();
     if (fields.length !== 1)
       return fields.length
@@ -59,7 +59,7 @@
     const key = context.connectionId + ":" + context.plate;
     const previous = handled.get(input);
     if (!force && edited.has(input))
-      return "Placa em edição. Use Preencher placa para usar a do orçamento.";
+      return "Placa em edição. Use Preencher placa para usar a da OS.";
     if (!force && previous?.key === key) return previous.message;
 
     let message = "Placa preenchida. Clique em consultar no Tempario.";
@@ -108,7 +108,7 @@
     const active = context?.connected && context.expires > Date.now();
     const label =
       active && context.plate
-        ? "Placa do orçamento: " + context.plate
+        ? "Placa da OS: " + context.plate
         : "Placa do veículo";
     if (panel.children[0].textContent !== label)
       panel.children[0].textContent = label;

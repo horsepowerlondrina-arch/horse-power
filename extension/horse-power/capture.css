@@ -177,3 +177,11 @@
 
 #hp-sky-float.hp-minimized > :not(strong):not(.hp-panel-toggle),
 #hp-tempario-float.hp-minimized > :not(strong):not(.hp-panel-toggle) { display: none !important; }
+
+#hp-sky-float .hp-panel-toggle, #hp-tempario-float .hp-panel-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 6px; flex: 0 0 32px;
+}
+#hp-sky-float .hp-panel-toggle:focus-visible, #hp-tempario-float .hp-panel-toggle:focus-visible {
+  outline: 2px solid #17212b; outline-offset: 2px;
+}

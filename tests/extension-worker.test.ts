@@ -363,15 +363,17 @@ test("minimizing and restoring panels preserves content and sends no connection 
   for (const source of ["sky", "tempario"]) {
     let minimized = false;
     const children: any[] = [{ freight: 1750, plate: "ABC1D23" }];
-    const panel = { classList: { contains: () => minimized, toggle: () => { minimized = !minimized; } }, appendChild: (b: any) => children.push(b) };
+    const panel = { classList: { add: () => { minimized = true; }, contains: () => minimized, toggle: () => { minimized = !minimized; } }, appendChild: (b: any) => children.push(b) };
     window.hpMinimizePanel(panel);
     const b = buttons.at(-1);
-    assert.equal(b.textContent, "Minimizar");
-    b.onclick();
     assert.equal(minimized, true);
-    assert.equal(b.textContent, "Restaurar");
+    assert.match(b.innerHTML, /<svg/);
+    assert.equal(b.title, "Restaurar painel Horse Power");
     b.onclick();
     assert.equal(minimized, false);
+    assert.equal(b.title, "Minimizar painel Horse Power");
+    b.onclick();
+    assert.equal(minimized, true);
     assert.equal(children[0].freight, 1750);
     assert.equal(children[0].plate, "ABC1D23");
     assert.ok(readFileSync(`extension/horse-power/${source}.js`, "utf8").includes("window.hpMinimizePanel(d)"));

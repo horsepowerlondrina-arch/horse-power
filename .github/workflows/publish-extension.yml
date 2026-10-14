@@ -30,7 +30,7 @@ jobs:
         run: npm ci
       - name: Validar extensão e publicação
         run: |
-          node --test tests/chrome-web-store.test.mjs
+          node --test tests/chrome-web-store.test.mjs tests/extension-panel.test.mjs
           npx tsx --test tests/extension-worker.test.ts tests/extension.test.ts
           npm run build
       - name: Conferir pacote

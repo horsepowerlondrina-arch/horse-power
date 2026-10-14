@@ -8,14 +8,14 @@ async function load() {
   const vehicle = await send("HP_VEHICLE");
   document.getElementById("plate").textContent = vehicle.connected
     ? vehicle.plate
-      ? "Placa do orçamento: " + vehicle.plate
+      ? "Placa da OS: " + vehicle.plate
       : "Destino sem placa. Selecione o veículo no Tempario."
     : "";
   document.getElementById("tempario").disabled = !vehicle.connected;
   document.getElementById("status").textContent =
     (s.connected
-      ? "Conectado: " + (s.label || `Atendimento #${s.number}`)
-      : "Abra o catálogo, orçamento ou OS e conecte a extensão.") +
+      ? "Conectado: " + (s.label || `OS #${s.number}`)
+      : "Abra o catálogo, OS e conecte a extensão.") +
     " · " +
     s.pending +
     " envio(s) pendente(s)";

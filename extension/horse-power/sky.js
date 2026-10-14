@@ -164,7 +164,7 @@
     toast(
       r.duplicate
         ? "Peça já enviada. Ajuste a quantidade na Horse Power."
-        : `Peça salva: ${r.label || `Atendimento #${r.number}`}`,
+        : `Peça salva: ${r.label || `OS #${r.number}`}`,
     );
   }
 
@@ -192,7 +192,7 @@
       b.type = "button";
       b.className = "hp-sky-btn";
       b.textContent = "HP • Enviar";
-      b.title = `Enviar ${p.code} para o orçamento conectado na Horse Power`;
+      b.title = `Enviar ${p.code} para a OS conectada na Horse Power`;
       b.addEventListener("click", async (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -272,15 +272,15 @@
       const info = await window.hpCaptureInfo();
       if (e)
         e.textContent = info.connected
-          ? info.label || `Atendimento #${info.number}`
-          : "Conecte um orçamento na Horse Power";
+          ? info.label || `OS #${info.number}`
+          : "Conecte uma OS na Horse Power";
       if (input) {
         input.disabled = !info.connected;
         if (document.activeElement !== input)
           input.value = ((info.freightTotal ?? 1750) / 100).toFixed(2);
       }
     } catch {
-      if (e) e.textContent = "Conecte um orçamento na Horse Power";
+      if (e) e.textContent = "Conecte uma OS na Horse Power";
       if (input) input.disabled = true;
     }
   }

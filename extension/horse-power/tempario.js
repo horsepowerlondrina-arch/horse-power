@@ -213,7 +213,7 @@
     });
     toast(
       r.duplicate
-        ? "Serviço já enviado. Confira o orçamento na Horse Power."
+        ? "Serviço já enviado. Confira a OS na Horse Power."
         : `Serviço e tempo salvos: ${r.label || `Atendimento #${r.number}`}`,
     );
   }

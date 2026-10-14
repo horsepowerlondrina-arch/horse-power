@@ -87,7 +87,7 @@ async function handle(msg, sender) {
         msg.target.destination === "catalog"
           ? "Catálogo"
           : String(
-              msg.target.label || `Atendimento #${msg.target.number}`,
+              msg.target.label || `OS #${msg.target.number}`,
             ).slice(0, 100),
       token: msg.target.token,
       number: msg.target.number,
@@ -170,7 +170,7 @@ async function handle(msg, sender) {
     const { target } = await chrome.storage.session.get("target");
     if (!target || target.expires <= Date.now())
       throw new Error(
-        "Conecte a extensão no orçamento antes de abrir o Tempario.",
+        "Conecte a extensão na OS antes de abrir o Tempario.",
       );
     await chrome.tabs.create({ url: "https://sistema.tempar.io/" });
     return { ok: true };
@@ -195,7 +195,7 @@ async function handle(msg, sender) {
     const { target } = await chrome.storage.session.get("target");
     if (!target || target.expires < Date.now())
       throw new Error(
-        "Abra o catálogo, orçamento ou OS na Horse Power e conecte a extensão primeiro.",
+        "Abra o catálogo, OS na Horse Power e conecte a extensão primeiro.",
       );
     const item = { ...msg.item, source: sources[origin] };
     const entry = {
