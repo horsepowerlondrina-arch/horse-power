@@ -6,7 +6,12 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { AppContext } from "../src/lib/context";
 import { OrderEditor } from "../src/pages/OrderEditor";
 
-const customer = { id: "c", name: "Cliente Nome Completo", active: 1 };
+const customer = {
+  id: "c",
+  name: "Cliente Nome Completo",
+  phone: "(43) 99999-1111",
+  active: 1,
+};
 const vehicle = {
   id: "v",
   customer_id: "c",
@@ -73,6 +78,9 @@ test("editing a linked quote shows its registered customer without a duplicate g
     items: [],
   });
   assert.match(html, /Cliente Nome Completo/);
+  assert.match(html, /value="\(43\) 99999-1111"/);
+  assert.doesNotMatch(html, /Cadastrar cliente sem sair/);
+  assert.doesNotMatch(html, /Sem cliente cadastrado/);
   assert.doesNotMatch(html, /Nome do cliente \(opcional\)/);
   assert.doesNotMatch(html, /Nome para o orçamento/);
   assert.match(html, /value="ABC1D23"/);
@@ -89,6 +97,8 @@ test("a guest quote preserves optional name and vehicle with a single plate inpu
     items: [],
   });
   assert.match(html, /value="Nome completo avulso"/);
+  assert.match(html, /Telefone \/ celular \*/);
+  assert.match(html, /O cliente será cadastrado ao salvar/);
   assert.match(html, /value="Veículo avulso"/);
   assert.equal((html.match(/value="DEF4G56"/g) || []).length, 1);
   assert.doesNotMatch(html, /Veículo cadastrado \(opcional\)/);

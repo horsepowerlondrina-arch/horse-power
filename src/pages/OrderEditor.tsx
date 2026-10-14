@@ -2,6 +2,8 @@ import { NumericInput } from "../components/NumericInput";
 import { CapturePanel } from "../components/CapturePanel";
 import { OrderPrint } from "../components/OrderPrint";
 import { CatalogPicker } from "../components/CatalogPicker";
+import { CustomerPicker } from "../components/CustomerPicker";
+import { validNewCustomerPhone } from "../../shared/customerIdentity";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
@@ -94,6 +96,14 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     order?.plate || order?.guest_plate || "",
   );
   const [identityReady, setIdentityReady] = useState(!!order);
+  const [customerName, setCustomerName] = useState(
+    data.customers.find((c) => c.id === order?.customer_id)?.name ||
+      order?.guest_name ||
+      "",
+  );
+  const [customerPhone, setCustomerPhone] = useState(
+    data.customers.find((c) => c.id === order?.customer_id)?.phone || "",
+  );
   const [lookedUp, setLookedUp] = useState<Record<string, any>>({});
   const [tab, setTab] = useState(initialCapture && order ? "items" : "details");
   const [itemKind, setItemKind] = useState("product");
@@ -106,9 +116,9 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     "money",
   );
   const [discountPercent, setDiscountPercent] = useState(0);
-  const [quickCreate, setQuickCreate] = useState<
-    "customers" | "vehicles" | "catalog" | null
-  >(null);
+  const [quickCreate, setQuickCreate] = useState<"vehicles" | "catalog" | null>(
+    null,
+  );
   const [editingProduct, setEditingProduct] = useState<{
     itemId: string;
     record: Entity;
@@ -170,23 +180,68 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
       "items",
       form.items.map((i, n) => (n === index ? { ...i, [key]: value } : i)),
     );
-  const save = async () => {
+  const orderInput = () => {
     if (!identityReady) {
-      setError("Consulte a placa ou escolha continuar sem informar a placa.");
-      setTab("details");
-      return;
+      throw new Error(
+        "Consulte a placa ou escolha continuar sem informar a placa.",
+      );
     }
-    if (form.status !== "quote" && (!form.customer_id || !form.vehicle_id)) {
-      setError("Selecione o cliente e o veículo.");
-      setTab("details");
-      return;
+    const name = customerName.trim();
+    let newCustomer;
+    if (!form.customer_id && name) {
+      if (name.length < 2)
+        throw new Error("Informe o nome completo do novo cliente.");
+      if (!validNewCustomerPhone(customerPhone))
+        throw new Error(
+          "Informe o telefone com DDD para cadastrar o novo cliente.",
+        );
+      newCustomer = { name, phone: customerPhone.trim() };
     }
+    if (!form.customer_id && !name && customerPhone.trim())
+      throw new Error("Informe também o nome do cliente.");
+    let newVehicle;
+    if (form.status !== "quote") {
+      if (!form.customer_id && !newCustomer)
+        throw new Error("Informe ou selecione o cliente da OS.");
+      if (!form.vehicle_id) {
+        const plate = lookupPlate || form.guest_plate;
+        if (
+          !/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(plate) ||
+          String(lookedUp.brand || "").trim().length < 2 ||
+          String(lookedUp.model || "").trim().length < 2 ||
+          !Number.isInteger(Number(lookedUp.year)) ||
+          Number(lookedUp.year) < 1900 ||
+          Number(lookedUp.year) > 2100
+        )
+          throw new Error(
+            "Informe a placa, marca, modelo e ano ou selecione um veículo cadastrado para a OS.",
+          );
+        newVehicle = {
+          plate,
+          brand: lookedUp.brand,
+          model: lookedUp.model,
+          year: Number(lookedUp.year),
+          color: lookedUp.color || "",
+          chassis: lookedUp.chassis || "",
+          km: form.km,
+        };
+      }
+    }
+    return {
+      ...form,
+      guest_name: form.customer_id || newCustomer ? "" : form.guest_name,
+      new_customer: newCustomer,
+      new_vehicle: newVehicle,
+      status: form.status === "quote" ? "quote" : "open",
+    };
+  };
+  const save = async () => {
     setBusy(true);
     setError("");
     try {
       const result = await send(
         `/orders${savedId ? `/${savedId}` : ""}`,
-        { ...form, status: form.status === "quote" ? "quote" : "open" },
+        orderInput(),
         savedId ? "PUT" : "POST",
       );
       await refresh();
@@ -194,6 +249,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
       navigate(`/ordens/${result.id}`, { replace: true });
     } catch (e) {
       setError((e as Error).message);
+      setTab("details");
     } finally {
       setBusy(false);
     }
@@ -204,7 +260,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     try {
       const result = await send(
         `/orders${savedId ? `/${savedId}` : ""}`,
-        { ...form, status: form.status === "quote" ? "quote" : "open" },
+        orderInput(),
         savedId ? "PUT" : "POST",
       );
       setSavedId(result.id);
@@ -386,6 +442,8 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                     disabled={!!locked}
                     onChange={(plate) => {
                       setLookupPlate(plate);
+                      setCustomerName("");
+                      setCustomerPhone("");
                       setIdentityReady(false);
                       setLookedUp({ plate });
                       setError("");
@@ -419,7 +477,11 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                           guest_plate: "",
                           guest_vehicle: "",
                         }));
+                        setCustomerName(owner.name);
+                        setCustomerPhone(owner.phone || "");
                       } else {
+                        setCustomerName("");
+                        setCustomerPhone("");
                         setLookedUp(r.vehicle || { plate: lookupPlate });
                         setForm((f) => ({
                           ...f,
@@ -442,6 +504,8 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                         className="button"
                         onClick={() => {
                           setLookupPlate("");
+                          setCustomerName("");
+                          setCustomerPhone("");
                           setLookedUp({});
                           setForm((f) => ({
                             ...f,
@@ -487,6 +551,8 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                                 guest_plate: "",
                                 guest_vehicle: "",
                               }));
+                              setCustomerName(owner.name);
+                              setCustomerPhone(owner.phone || "");
                             }
                             setIdentityReady(true);
                             setError("");
@@ -510,75 +576,83 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                         Dados do cliente
                       </h3>
                       <div className="form-grid">
+                        <CustomerPicker
+                          customers={data.customers}
+                          value={customerName}
+                          selectedId={form.customer_id}
+                          disabled={!!locked}
+                          onChange={(name) => {
+                            setCustomerName(name);
+                            if (form.customer_id) {
+                              setCustomerPhone("");
+                              setLookedUp(vehicle || lookedUp);
+                            }
+                            setForm((f) => ({
+                              ...f,
+                              customer_id: "",
+                              vehicle_id: "",
+                              guest_name: name,
+                              guest_plate: lookupPlate,
+                              guest_vehicle:
+                                f.guest_vehicle ||
+                                [vehicle?.brand, vehicle?.model]
+                                  .filter(Boolean)
+                                  .join(" "),
+                              km: form.customer_id ? 0 : f.km,
+                            }));
+                          }}
+                          onSelect={(selected) => {
+                            setCustomerName(selected.name);
+                            setCustomerPhone(selected.phone || "");
+                            if (selected.id !== form.customer_id) {
+                              const registered = data.vehicles.find(
+                                (v) =>
+                                  v.active &&
+                                  v.customer_id === selected.id &&
+                                  String(v.plate)
+                                    .toUpperCase()
+                                    .replace(/[^A-Z0-9]/g, "") === lookupPlate,
+                              );
+                              setLookedUp(registered || vehicle || lookedUp);
+                              setForm((f) => ({
+                                ...f,
+                                customer_id: selected.id,
+                                vehicle_id: registered?.id || "",
+                                guest_name: "",
+                                guest_plate: registered ? "" : lookupPlate,
+                                guest_vehicle: registered
+                                  ? ""
+                                  : f.guest_vehicle,
+                                km: registered?.km || 0,
+                              }));
+                            }
+                          }}
+                        />
                         <Field
                           label={
-                            form.status === "quote" ? "Cliente" : "Cliente *"
+                            !form.customer_id && customerName.trim()
+                              ? "Telefone / celular *"
+                              : "Telefone / celular"
                           }
                           full
                         >
-                          <select
-                            value={form.customer_id}
-                            onChange={(e) =>
-                              setForm((f) => ({
-                                ...f,
-                                customer_id: e.target.value,
-                                vehicle_id: "",
-                                guest_name: e.target.value ? "" : f.guest_name,
-                                guest_plate: lookupPlate,
-                                guest_vehicle:
-                                  f.guest_vehicle ||
-                                  [vehicle?.brand, vehicle?.model]
-                                    .filter(Boolean)
-                                    .join(" "),
-                                km: 0,
-                              }))
+                          <input
+                            type="tel"
+                            autoComplete="tel"
+                            maxLength={60}
+                            value={customerPhone}
+                            readOnly={!!form.customer_id}
+                            required={
+                              !form.customer_id && !!customerName.trim()
                             }
-                          >
-                            <option value="">
-                              {form.status === "quote"
-                                ? "Sem cliente cadastrado"
-                                : "Selecione o cliente"}
-                            </option>
-                            {data.customers
-                              .filter(
-                                (c) => c.active || c.id === form.customer_id,
-                              )
-                              .map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                          </select>
+                            placeholder="(43) 99999-9999"
+                            onChange={(e) => setCustomerPhone(e.target.value)}
+                          />
                         </Field>
-                        {form.status === "quote" && !form.customer_id && (
-                          <Field label="Nome do cliente (opcional)" full>
-                            <input
-                              value={form.guest_name}
-                              onChange={(e) =>
-                                set("guest_name", e.target.value)
-                              }
-                            />
-                          </Field>
-                        )}
-                        {!locked && (
-                          <button
-                            type="button"
-                            className="text-button full"
-                            onClick={() => setQuickCreate("customers")}
-                          >
-                            <Plus size={14} />
-                            Cadastrar cliente sem sair
-                          </button>
-                        )}
-                        {customer && (
-                          <div className="customer-summary full">
-                            <span>
-                              {customer.phone || "Telefone não informado"}
-                            </span>
-                            <span>
-                              {customer.email || "E-mail não informado"}
-                            </span>
-                          </div>
+                        {!form.customer_id && customerName.trim() && (
+                          <p className="muted full">
+                            O cliente será cadastrado ao salvar o atendimento.
+                          </p>
                         )}
                       </div>
                       <h3 className="form-section-title">
@@ -637,6 +711,66 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                               }
                             />
                           </Field>
+                        )}
+                        {form.status !== "quote" && !form.vehicle_id && (
+                          <>
+                            <p className="muted full">
+                              O veículo novo será cadastrado junto com a OS.
+                              Informe a placa no início do atendimento.
+                            </p>
+                            <Field label="Marca do veículo *">
+                              <input
+                                maxLength={200}
+                                value={lookedUp.brand || ""}
+                                onChange={(e) =>
+                                  setLookedUp((v) => ({
+                                    ...v,
+                                    brand: e.target.value,
+                                  }))
+                                }
+                              />
+                            </Field>
+                            <Field label="Modelo do veículo *">
+                              <input
+                                maxLength={200}
+                                value={lookedUp.model || ""}
+                                onChange={(e) =>
+                                  setLookedUp((v) => ({
+                                    ...v,
+                                    model: e.target.value,
+                                  }))
+                                }
+                              />
+                            </Field>
+                            <Field label="Ano do veículo *">
+                              <NumericInput
+                                type="number"
+                                min={1900}
+                                max={2100}
+                                value={lookedUp.year || ""}
+                                onChange={(e) =>
+                                  setLookedUp((v) => ({
+                                    ...v,
+                                    year: e.target.value
+                                      ? Number(e.target.value)
+                                      : "",
+                                  }))
+                                }
+                              />
+                            </Field>
+                            <Field label="Cor do veículo">
+                              <input
+                                maxLength={200}
+                                value={lookedUp.color || ""}
+                                onChange={(e) =>
+                                  setLookedUp((v) => ({
+                                    ...v,
+                                    color: e.target.value,
+                                  }))
+                                }
+                              />
+                            </Field>
+                          </>
                         )}
                         {!locked && form.customer_id && (
                           <button
@@ -1142,20 +1276,11 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
               ? { ...lookedUp, customer_id: form.customer_id }
               : quickCreate === "catalog"
                 ? { kind: itemKind }
-                : quickCreate === "customers"
-                  ? { name: form.guest_name }
-                  : undefined
+                : undefined
           }
           onClose={() => setQuickCreate(null)}
           onSaved={(recordId, values) => {
-            if (quickCreate === "customers")
-              setForm((f) => ({
-                ...f,
-                customer_id: recordId,
-                vehicle_id: values.vehicle_id || "",
-                km: values.vehicle_km || 0,
-              }));
-            else if (quickCreate === "catalog") {
+            if (quickCreate === "catalog") {
               setForm((f) => ({
                 ...f,
                 items: [

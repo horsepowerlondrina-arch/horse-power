@@ -1,9 +1,19 @@
 import { productLabel } from "../../shared/productIdentity.js";
+import {
+  normalizeCustomerName,
+  customerPhoneDigits,
+  validNewCustomerPhone,
+} from "../../shared/customerIdentity.js";
 import { randomUUID } from "node:crypto";
 import { transaction, type DB } from "../db/database.js";
 import type { Context } from "../auth/session.js";
 import { assertTransition, totalOf, type Status } from "../domain/orders.js";
-import { configurePlan, settleInstallment, settleCredit, requireAdmin } from "./payments.js";
+import {
+  configurePlan,
+  settleInstallment,
+  settleCredit,
+  requireAdmin,
+} from "./payments.js";
 export const id = () => randomUUID();
 export type Row = Record<string, any>;
 export async function scoped(
@@ -71,6 +81,105 @@ export async function listOrders(db: DB, tenant: string): Promise<Row[]> {
   }
   return rows.map((o) => ({ ...o, items: byOrder.get(o.id) || [] }));
 }
+async function resolveOrderIdentity(db: DB, ctx: Context, input: Row) {
+  let customerId = input.customer_id || null;
+  let vehicleId = input.vehicle_id || null;
+  if (input.new_customer) {
+    if (customerId)
+      throw new Error(
+        "Escolha um cliente cadastrado ou informe um novo cliente.",
+      );
+    const name = String(input.new_customer.name || "")
+      .trim()
+      .replace(/\s+/g, " ");
+    const phone = String(input.new_customer.phone || "").trim();
+    if (name.length < 2 || name.length > 150)
+      throw new Error(
+        "Informe o nome completo do novo cliente (até 150 caracteres).",
+      );
+    if (!validNewCustomerPhone(phone))
+      throw new Error(
+        "Informe o telefone com DDD para cadastrar o novo cliente.",
+      );
+    const matches = (
+      await db
+        .prepare("SELECT id,name,phone,active FROM customers WHERE tenant_id=?")
+        .all(ctx.tenantId)
+    ).filter(
+      (c) =>
+        normalizeCustomerName(c.name) === normalizeCustomerName(name) &&
+        customerPhoneDigits(c.phone) === customerPhoneDigits(phone),
+    );
+    if (matches.length > 1)
+      throw new Error(
+        "Há mais de um cliente com esse nome e telefone. Selecione o cadastro na lista.",
+      );
+    if (matches.length) {
+      if (!matches[0].active)
+        throw new Error("Este cliente está inativo. Reative-o no cadastro.");
+      customerId = matches[0].id;
+    } else {
+      customerId = id();
+      await db
+        .prepare(
+          "INSERT INTO customers(id,tenant_id,name,phone) VALUES(?,?,?,?)",
+        )
+        .run(customerId, ctx.tenantId, name, phone);
+      await audit(db, ctx, "customers.created", customerId);
+    }
+  }
+  if (input.new_vehicle) {
+    if (vehicleId || !customerId)
+      throw new Error("Vincule o novo veículo a um cliente.");
+    const customer = await scoped(db, "customers", ctx.tenantId, customerId);
+    if (!customer.active) throw new Error("Escolha um cliente ativo.");
+    const v = input.new_vehicle;
+    const plate = String(v.plate || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    if (
+      !/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(plate) ||
+      String(v.brand || "").trim().length < 2 ||
+      String(v.model || "").trim().length < 2 ||
+      !Number.isInteger(v.year) ||
+      v.year < 1900 ||
+      v.year > 2100
+    )
+      throw new Error(
+        "Informe placa, marca, modelo e ano válidos para o novo veículo.",
+      );
+    const existing = await db
+      .prepare("SELECT * FROM vehicles WHERE tenant_id=? AND plate=?")
+      .get(ctx.tenantId, plate);
+    if (existing) {
+      if (existing.customer_id !== customerId || !existing.active)
+        throw new Error(
+          "Esta placa já pertence a outro cliente ou está inativa. Consulte a placa e selecione o cadastro correto.",
+        );
+      vehicleId = existing.id;
+    } else {
+      vehicleId = id();
+      await db
+        .prepare(
+          "INSERT INTO vehicles(id,tenant_id,customer_id,plate,brand,model,year,color,km,chassis) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          vehicleId,
+          ctx.tenantId,
+          customerId,
+          plate,
+          v.brand.trim(),
+          v.model.trim(),
+          v.year,
+          v.color || "",
+          input.km,
+          v.chassis || "",
+        );
+      await audit(db, ctx, "vehicles.created", vehicleId);
+    }
+  }
+  return { customerId, vehicleId };
+}
 export async function saveOrder(
   db: DB,
   ctx: Context,
@@ -87,8 +196,11 @@ export async function saveOrder(
         "Ordens finalizadas ou canceladas não podem ser editadas.",
       );
     const kind = old?.kind || (input.status === "quote" ? "quote" : "order");
-    const customerId = input.customer_id || null,
-      vehicleId = input.vehicle_id || null;
+    const { customerId, vehicleId } = await resolveOrderIdentity(
+      db,
+      ctx,
+      input,
+    );
     if (kind === "order" && (!customerId || !vehicleId))
       throw new Error("Selecione o cliente e o veículo para a OS.");
     const customer = customerId
@@ -146,8 +258,13 @@ export async function saveOrder(
           kind: catalog.kind,
           name:
             item.refresh_catalog === true
-              ? (catalog.kind === "product" ? productLabel(catalog) : catalog.name)
-              : prior?.name || (catalog.kind === "product" ? productLabel(catalog) : catalog.name),
+              ? catalog.kind === "product"
+                ? productLabel(catalog)
+                : catalog.name
+              : prior?.name ||
+                (catalog.kind === "product"
+                  ? productLabel(catalog)
+                  : catalog.name),
           cost: item.cost_override ?? prior?.cost ?? catalog.cost,
           professional_id: item.professional_id || null,
         };
@@ -461,7 +578,10 @@ export async function settle(
       "SELECT id FROM payment_installments WHERE tenant_id=? AND receivable_id=? AND status='open'",
     )
     .all(ctx.tenantId, record);
-  if (r.method === "Cartão de crédito" || (!r.plan_configured && method === "Cartão de crédito"))
+  if (
+    r.method === "Cartão de crédito" ||
+    (!r.plan_configured && method === "Cartão de crédito")
+  )
     return settleCredit(db, ctx, record, accountId);
   if (parts.length !== 1)
     throw new Error("Receba cada parcela na tela de pagamento.");

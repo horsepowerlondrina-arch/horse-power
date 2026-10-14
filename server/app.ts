@@ -137,6 +137,8 @@ const schemas = {
 const orderSchema = z.object({
   customer_id: z.string().nullable().optional(),
   vehicle_id: z.string().nullable().optional(),
+  new_customer: z.object({ name, phone: z.string().trim().max(60) }).optional(),
+  new_vehicle: schemas.vehicles.omit({ customer_id: true }).optional(),
   status: z.enum(["quote", "open"]).default("open"),
   guest_name: text,
   guest_plate: text,
