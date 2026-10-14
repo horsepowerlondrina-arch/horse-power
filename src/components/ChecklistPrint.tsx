@@ -30,7 +30,7 @@ export function ChecklistPrint({
   return (
     <section className="print-only workshop-document checklist-print">
       <DocumentHeader shop={tenant} />
-      <div className="hp-print-titlebar"><strong>CHECKLIST DE ENTRADA</strong><span>{checklist.order_number ? `${checklist.order_kind === "quote" ? "Orçamento" : "OS"} #${checklist.order_number}` : ""}</span></div>
+      <div className="hp-print-titlebar"><strong>CHECKLIST DE ENTRADA</strong><span>{checklist.order_number ? `OS #${checklist.order_number}` : ""}</span></div>
 
       <div className="checklist-print-grid">
         <div><b>Cliente:</b> {checklist.customer_name}</div>
@@ -38,7 +38,7 @@ export function ChecklistPrint({
         <div><b>Veículo:</b> {checklist.vehicle_label}</div>
         <div><b>Placa:</b> {checklist.plate}</div>
         <div>
-          <b>{checklist.order_kind === "quote" ? "Orçamento" : "OS"}:</b>{" "}
+          <b>OS:</b>{" "}
           {checklist.order_number ? `#${checklist.order_number}` : "—"}
         </div>
         <div><b>KM:</b> {Number(checklist.km || 0).toLocaleString("pt-BR")}</div>

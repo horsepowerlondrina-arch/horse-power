@@ -49,7 +49,7 @@ export function Orders() {
   const [showReport, setShowReport] = useState(false);
   const [exporting, setExporting] = useState(false);
   const rows = selectReportOrders(data.orders, filters, data, search, session.role === "owner");
-  const financialRows = rows.filter((o) => o.kind === "order");
+  const financialRows = rows.filter((o) => o.status !== "quote");
   const results = showReport ? financialRows.map((o) => orderResult(o, data)) : [];
   const exportExcel = async () => {
     setExporting(true);
@@ -72,17 +72,14 @@ export function Orders() {
     <div className="orders-list-page">
       <PageHeading
         eyebrow="ATENDIMENTO"
-        title="Orçamentos e OS"
-        description="Do orçamento à entrega, acompanhe tudo pela situação do atendimento."
+        title="Ordens de Serviço"
+        description="Uma única OS, do status Orçamento até a entrega."
         actions={session.role === "owner" ? <>
           <button className="button" onClick={() => setShowReport(true)} disabled={!financialRows.length}>
             <Download size={17} />Relatório PDF / Excel
           </button>
-          <button className="button" onClick={() => navigate("/ordens/nova?status=quote")}>
-            <Plus size={18} />Novo orçamento
-          </button>
-          <button className="button primary" onClick={() => navigate("/ordens/nova")}>
-            <Plus size={18} />Nova OS
+          <button className="button primary" onClick={() => navigate("/ordens/nova?status=quote")}>
+            <Plus size={18} />Nova Ordem de Serviço
           </button>
         </> : undefined}
       />
@@ -152,7 +149,7 @@ export function Orders() {
               </label>
             </div>
             <fieldset className="report-statuses">
-              <legend>Situação do atendimento</legend>
+              <legend>Status da OS</legend>
               <label>
                 <input
                   type="checkbox"
@@ -220,11 +217,11 @@ export function Orders() {
               </p>
             )}
           </form>
-        <p className="muted">Orçamentos podem ser criados sem cliente. Para aprovar, informe cliente e veículo. O relatório financeiro considera somente as OS; o orçamento pode ser impresso no detalhe do atendimento.</p>
+        <p className="muted">No status Orçamento, a OS pode ser criada sem cliente. Para aprovar, informe cliente e veículo. OS no status Orçamento ficam fora do relatório financeiro e podem ser impressas no detalhe da OS.</p>
         <OrderTable orders={rows} />
         <div className="panel-foot">
           <span>
-            {rows.length} atendimentos
+            {rows.length} ordens de serviço
           </span>
           {session.role === "owner" && (
             <span>

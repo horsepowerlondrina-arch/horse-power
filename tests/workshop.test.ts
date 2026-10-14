@@ -652,7 +652,7 @@ test("API autentica, protege oficinas, valida entrada e revoga sessão", async (
   }
 });
 
-test("orçamento avulso preserva seu tipo ao cancelar e exige vínculos na aprovação", async () => {
+test("OS sem cliente pode ser cancelada e exige vínculos na aprovação", async () => {
   const db = fixture();
   try {
     const guest = await saveOrder(
@@ -675,9 +675,9 @@ test("orçamento avulso preserva seu tipo ao cancelar e exige vínculos na aprov
     );
     await transitionOrder(db, ctx, guest, "cancelled");
     const rows = (await listOrders(db, "a")) as Order[];
-    assert.equal(filterOrders(rows, true, "all").length, 1);
-    assert.equal(filterOrders(rows, true, "cancelled").length, 1);
-    assert.equal(filterOrders(rows, false, "all").length, 0);
+    assert.equal(filterOrders(rows, "all").length, 1);
+    assert.equal(filterOrders(rows, "cancelled").length, 1);
+    assert.equal(filterOrders(rows, "quote").length, 0);
     const quote = await saveOrder(
       db,
       ctx,
@@ -762,7 +762,7 @@ test("Crédito parcelado recebe o total líquido em uma única confirmação", a
       .prepare("SELECT * FROM payment_installments ORDER BY sequence")
       .all();
     assert.equal(
-      filterOrders((await listOrders(db, "a")) as Order[], false, "active")
+      filterOrders((await listOrders(db, "a")) as Order[], "active")
         .length,
       1,
     );
@@ -805,12 +805,12 @@ test("Crédito parcelado recebe o total líquido em uma única confirmação", a
     );
     await assert.rejects(settleInstallment(db, ctx, String(parts[1].id)), /já foi/);
     assert.equal(
-      filterOrders((await listOrders(db, "a")) as Order[], false, "active")
+      filterOrders((await listOrders(db, "a")) as Order[], "active")
         .length,
       0,
     );
     assert.equal(
-      filterOrders((await listOrders(db, "a")) as Order[], false, "completed")
+      filterOrders((await listOrders(db, "a")) as Order[], "completed")
         .length,
       1,
     );

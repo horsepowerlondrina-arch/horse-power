@@ -393,7 +393,7 @@ export function ChecklistEditor() {
       await refresh();
       if (next.created_quote && next.redirect_order_id) {
         notify(
-          "Checklist finalizado. Cliente/veículo conferidos e orçamento aberto automaticamente.",
+          "Checklist finalizado. Cliente/veículo conferidos e OS criada no status Orçamento.",
         );
         navigate(`/ordens/${next.redirect_order_id}/editar`, {
           replace: true,
@@ -485,7 +485,7 @@ export function ChecklistEditor() {
             <div className="checklist-order-context">
               Atendimento vinculado:{" "}
               <strong>
-                {initialOrder.kind === "quote" ? "Orçamento" : "OS"} #
+                OS #
                 {initialOrder.number}
               </strong>
             </div>
@@ -766,7 +766,7 @@ export function ChecklistEditor() {
               <div className="panel-foot">
                 <span>
                   {!creating.order_id
-                    ? "Ao finalizar, o sistema confere/cria os cadastros necessários e abre um orçamento automaticamente."
+                    ? "Ao finalizar, o sistema confere/cria os cadastros necessários e abre uma OS no status Orçamento."
                     : "Este checklist permanecerá vinculado ao atendimento já existente."}
                 </span>
                 <button
@@ -816,7 +816,7 @@ export function ChecklistEditor() {
           title={`${record.plate} · ${record.vehicle_label}`}
           description={`${record.customer_name}${
             record.order_number
-              ? ` · ${record.order_kind === "quote" ? "Orçamento" : "OS"} #${record.order_number}`
+              ? ` · OS #${record.order_number}`
               : ""
           }`}
           actions={

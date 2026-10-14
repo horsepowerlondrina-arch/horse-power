@@ -79,7 +79,7 @@ export async function listOrders(db: DB, tenant: string): Promise<Row[]> {
     group.push(item);
     byOrder.set(item.order_id, group);
   }
-  return rows.map((o) => ({ ...o, items: byOrder.get(o.id) || [] }));
+  return rows.map((o) => ({ ...o, kind: "order", items: byOrder.get(o.id) || [] }));
 }
 async function resolveOrderIdentity(db: DB, ctx: Context, input: Row) {
   let customerId = input.customer_id || null;
@@ -195,13 +195,15 @@ export async function saveOrder(
       throw new Error(
         "Ordens finalizadas ou canceladas não podem ser editadas.",
       );
-    const kind = old?.kind || (input.status === "quote" ? "quote" : "order");
+    const status = old?.status || input.status || "quote";
+    // Legacy database discriminator is derived from status, never used for business rules.
+    const kind = status === "quote" ? "quote" : "order";
     const { customerId, vehicleId } = await resolveOrderIdentity(
       db,
       ctx,
       input,
     );
-    if (kind === "order" && (!customerId || !vehicleId))
+    if (status !== "quote" && (!customerId || !vehicleId))
       throw new Error("Selecione o cliente e o veículo para a OS.");
     const customer = customerId
       ? await scoped(db, "customers", ctx.tenantId, customerId)
@@ -318,9 +320,9 @@ export async function saveOrder(
     if (old)
       await db
         .prepare(
-          "UPDATE orders SET customer_id=?,vehicle_id=?,guest_name=?,guest_plate=?,guest_vehicle=?,entered_on=?,due_on=?,km=?,problem=?,notes=?,discount=?,total=? WHERE tenant_id=? AND id=?",
+          "UPDATE orders SET kind=?,customer_id=?,vehicle_id=?,guest_name=?,guest_plate=?,guest_vehicle=?,entered_on=?,due_on=?,km=?,problem=?,notes=?,discount=?,total=? WHERE tenant_id=? AND id=?",
         )
-        .run(...values, ctx.tenantId, orderId);
+        .run(kind, ...values, ctx.tenantId, orderId);
     else {
       const number = Number(
         (await db
@@ -338,7 +340,7 @@ export async function saveOrder(
           ctx.tenantId,
           number,
           kind,
-          kind === "quote" ? "quote" : "open",
+          status,
           ...values,
         );
     }
@@ -364,7 +366,7 @@ export async function saveOrder(
     await audit(
       db,
       ctx,
-      old ? "order.updated" : `order.created.${kind}`,
+      old ? "order.updated" : "order.created",
       orderId,
     );
     return orderId;
@@ -429,7 +431,6 @@ export async function transitionOrder(
 
     if (ctx.role !== "owner") {
       if (
-        order.kind !== "order" ||
         !["working", "ready"].includes(status) ||
         !["open", "working", "ready"].includes(order.status)
       )
@@ -443,7 +444,7 @@ export async function transitionOrder(
     if (!["quote", "cancelled"].includes(status)) {
       if (!order.customer_id || !order.vehicle_id)
         throw new Error(
-          "Vincule cliente e veículo antes de transformar o atendimento em OS.",
+          "Vincule cliente e veículo antes de aprovar a OS.",
         );
       const customer = await scoped(
           db,
@@ -526,12 +527,8 @@ export async function transitionOrder(
           );
     }
 
-    const kind =
-      status === "quote"
-        ? "quote"
-        : status === "cancelled"
-          ? order.kind
-          : "order";
+    // Keep the old nullable-customer database constraint compatible; status is authoritative.
+    const kind = status === "quote" || (status === "cancelled" && (!order.customer_id || !order.vehicle_id)) ? "quote" : "order";
     await db
       .prepare(
         "UPDATE orders SET status=?,kind=?,completed_on=? WHERE tenant_id=? AND id=?",
@@ -589,7 +586,7 @@ export async function settle(
 }
 export async function mechanicWorkspace(db: DB, tenant: string) {
   const orders = (await listOrders(db, tenant))
-    .filter((o) => o.kind === "order")
+    .filter((o) => ["open", "working", "ready", "completed"].includes(o.status))
     .map((o) => ({
       id: o.id,
       number: o.number,

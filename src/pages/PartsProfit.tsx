@@ -13,7 +13,6 @@ export function PartsProfit() {
   const totals = revenueBreakdown(data.orders, from, to);
   const orders = data.orders.filter(
     (o) =>
-      o.kind === "order" &&
       o.status === "completed" &&
       workshopDate(o.completed_on || "") >= from &&
       workshopDate(o.completed_on || "") <= to &&

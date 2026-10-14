@@ -39,7 +39,7 @@ export function Checklists() {
       <PageHeading
         eyebrow="ENTRADA DO VEÍCULO"
         title="Checklists"
-        description="Comece pela placa, registre a entrada e deixe o sistema abrir o orçamento ao finalizar."
+        description="Comece pela placa, registre a entrada e deixe o sistema abrir uma OS no status Orçamento ao finalizar."
         actions={
           <button
             className="button primary"
@@ -83,7 +83,7 @@ export function Checklists() {
                   <small>
                     {row.customer_name}
                     {row.order_number
-                      ? ` · ${row.order_kind === "quote" ? "Orçamento" : "OS"} #${row.order_number}`
+                      ? ` · OS #${row.order_number}`
                       : ""}
                   </small>
                 </div>

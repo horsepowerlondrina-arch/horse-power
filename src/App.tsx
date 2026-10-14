@@ -162,7 +162,7 @@ export function App() {
       title: "PRINCIPAL",
       items: [
         ["/dashboard", "Visão geral", LayoutDashboard],
-        ["/ordens", "Orçamentos e OS", ClipboardList],
+        ["/ordens", "Ordens de Serviço", ClipboardList],
         ["/checklists", "Checklists de entrada", ClipboardCheck],
       ],
     },

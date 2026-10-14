@@ -27,8 +27,8 @@ const sections = [
       },
       {
         to: "/ordens",
-        title: "Orçamentos e OS",
-        description: "Prepare orçamentos e acompanhe o atendimento até a entrega.",
+        title: "Ordens de Serviço",
+        description: "Acompanhe a OS desde o status Orçamento até a entrega.",
         Icon: ClipboardList,
       },
       {

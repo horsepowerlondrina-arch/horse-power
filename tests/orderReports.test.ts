@@ -152,7 +152,7 @@ test("opening, completion, statuses, search and quotes are filtered together", (
     0,
   );
   assert.equal(
-    selectReportOrders([{ ...order, kind: "quote" }], filters, data).length,
+    selectReportOrders([{ ...order, status: "quote", display_status: "quote" }], filters, data).length,
     0,
   );
 });

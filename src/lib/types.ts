@@ -2,6 +2,7 @@ export type Entity = Record<string, any> & { id: string };
 export type Order = Entity & {
   number: number;
   status: string;
+  /** Legacy compatibility metadata. OS behavior is determined only by status. */
   kind: "quote" | "order";
   display_status: string;
   customer_id: string;

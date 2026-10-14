@@ -36,7 +36,6 @@ export function OrderPrint({
   );
   const discount = Number(order.discount || 0);
   const total = productTotal + serviceTotal - discount;
-  const quote = order.kind === "quote" || order.status === "quote";
   const customerName =
     customer?.name || order.customer_name || order.guest_name || "—";
   const customerPhone = customer?.phone || "—";
@@ -63,7 +62,7 @@ export function OrderPrint({
 
       <div className="hp-print-titlebar">
         <strong>
-          {quote ? "ORÇAMENTO Nº" : "ORDEM DE SERVIÇO Nº"}{" "}
+          ORDEM DE SERVIÇO Nº{" "}
           {order.number || "—"}
         </strong>
         <span>{fullDate(order.entered_on)}</span>

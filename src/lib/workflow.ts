@@ -15,10 +15,9 @@ export const workshopDate = (timestamp: string) => {
 };
 export const displayStatus = (order: Order) =>
   order.display_status || order.status;
-export function filterOrders(orders: Order[], quotes: boolean, status: string) {
+export function filterOrders(orders: Order[], status: string) {
   return orders.filter(
     (o) =>
-      (quotes ? o.kind === "quote" : o.kind === "order") &&
       (status === "all" ||
         (status === "active"
           ? ["open", "working", "ready", "awaiting_payment"].includes(
@@ -33,7 +32,6 @@ export function revenueBreakdown(orders: Order[], from: string, to: string) {
   return orders
     .filter(
       (o) =>
-        o.kind === "order" &&
         o.status === "completed" &&
         workshopDate(o.completed_on || "") >= from &&
         workshopDate(o.completed_on || "") <= to,

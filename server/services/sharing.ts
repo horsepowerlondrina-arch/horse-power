@@ -66,7 +66,7 @@ export async function readShare(db: DB, token: string) {
   return {
     shop,
     number: o.number,
-    kind: o.kind,
+    kind: "order",
     status: o.status,
     customer: (c?.name || o.guest_name || "Cliente"),
     vehicle: v ? `${v.brand} ${v.model}` : o.guest_vehicle,

@@ -55,10 +55,10 @@ export function OrderEditor() {
       }
       order={order}
       quote={
-        order?.kind === "quote" ||
+        order?.status === "quote" ||
         location.pathname.startsWith("/orcamentos") ||
         (!order &&
-          new URLSearchParams(location.search).get("status") === "quote")
+          new URLSearchParams(location.search).get("status") !== "open")
       }
     />
   );
@@ -284,7 +284,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
       (!form.customer_id || !form.vehicle_id)
     ) {
       setError(
-        "Informe o cliente e o veículo antes de aprovar o orçamento para execução.",
+        "Informe o cliente e o veículo antes de aprovar a OS para execução.",
       );
       setTab("details");
       setConfirm("");
@@ -322,13 +322,13 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
     }
   };
   const next: Record<string, [string, string]> = {
-    quote: ["open", "Aprovar orçamento"],
+    quote: ["open", "Aprovar OS"],
     open: ["working", "Iniciar execução"],
     working: ["ready", "Marcar como pronta"],
     ready: ["completed", "Finalizar OS"],
   };
   const statusOptions = [
-    ["quote", "Orçamento", "Voltar o atendimento para orçamento."],
+    ["quote", "Orçamento", "Voltar a OS para o status Orçamento."],
     ["open", "OS aberta", "Deixar a OS aberta, antes do início da execução."],
     ["working", "Em execução", "Retomar ou colocar a OS em execução."],
     ["ready", "Pronta para entrega", "Marcar a OS como pronta para entrega."],
@@ -350,10 +350,8 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
           eyebrow="ATENDIMENTO"
           title={
             order
-              ? `${order.status === "quote" ? "Orçamento" : "Ordem de serviço"} #${order.number}`
-              : quote
-                ? "Novo orçamento"
-                : "Nova ordem de serviço"
+              ? `Ordem de Serviço #${order.number}`
+              : "Nova Ordem de Serviço"
           }
           description={
             order
@@ -388,7 +386,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
           ...form,
           id: order?.id || "print-preview",
           number: order?.number || "—",
-          kind: form.status === "quote" ? "quote" : "order",
+          kind: "order",
           customer_name: customer?.name || form.guest_name,
           plate: vehicle?.plate || form.guest_plate,
           brand: vehicle?.brand || "",
@@ -567,11 +565,17 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                   )}
                   {identityReady && (
                     <>
+                      {!order && <Field label="Status inicial da OS" full>
+                        <select value={form.status} onChange={e => set("status", e.target.value)}>
+                          <option value="quote">Orçamento</option>
+                          <option value="open">Aberta (já aprovada)</option>
+                        </select>
+                      </Field>}
                       {form.status === "quote" && (
                         <div className="info-box">
                           {!form.vehicle_id && lookupPlate
                             ? "Ao salvar, o veículo será cadastrado e vinculado ao cliente informado. Confira os dados abaixo."
-                            : "Você pode salvar este orçamento sem cadastro. Vincule cliente e veículo antes de aprovar."}
+                            : "No status Orçamento, a OS pode ser salva sem cliente. Vincule cliente e veículo antes de aprovar."}
                         </div>
                       )}
                       <h3 className="form-section-title">
@@ -1194,7 +1198,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
           </div>
           <p className="summary-note">
             {form.status === "quote"
-              ? "O orçamento não movimenta estoque nem gera cobrança."
+              ? "No status Orçamento, a OS não movimenta estoque nem gera cobrança."
               : "Ao finalizar, as peças são baixadas do estoque e o valor é lançado em contas a receber."}
           </p>
           {order && admin && (
@@ -1372,7 +1376,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
               : confirm === "completed"
                 ? "Esta ação baixa os produtos do estoque, gera a cobrança e bloqueia a edição até que a OS seja reaberta."
                 : confirm === "quote"
-                  ? "O atendimento voltará a ser orçamento e poderá ser editado normalmente."
+                  ? "A OS voltará ao status Orçamento e poderá ser editada normalmente."
                   : confirm === "cancelled"
                     ? "O atendimento será preservado no histórico como cancelado e poderá ser reaberto pelo administrador."
                     : "Os dados atuais serão salvos e o atendimento seguirá para a situação escolhida."

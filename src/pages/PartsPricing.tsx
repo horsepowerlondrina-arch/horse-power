@@ -204,7 +204,7 @@ export function PartsPricing() {
         <strong>{money(price - base)}</strong>
       </p>
       <p className="muted">
-        Orçamentos e OS já lançados preservam seus valores. Ganho bruto não
+        OS já lançadas preservam seus valores. Ganho bruto não
         desconta taxas de cartão nem despesas da oficina.
       </p>
       {error && (

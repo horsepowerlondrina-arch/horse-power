@@ -234,7 +234,7 @@ export async function beginCapture(
     return {
       token,
       destination: "order",
-      label: `${order.kind === "quote" ? "Orçamento" : "OS"} #${order.number}`,
+      label: `OS #${order.number}`,
       number: order.number,
       plate: /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(plate) ? plate : "",
       batch_id: batchId,
@@ -550,7 +550,7 @@ export async function importCapture(db: DB, token: string, input: unknown) {
     if (!order && !s.catalog_target)
       throw new Error("Destino da captura inválido.");
     const labelText = order
-      ? `${order.kind === "quote" ? "Orçamento" : "OS"} #${order.number}`
+      ? `OS #${order.number}`
       : "Catálogo";
     if (order && ["completed", "cancelled"].includes(order.status))
       throw new Error("Este atendimento não aceita mais capturas.");

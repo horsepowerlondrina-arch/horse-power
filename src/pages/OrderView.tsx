@@ -24,7 +24,7 @@ export function OrderView() {
   const customer = data.customers.find((c) => c.id === order.customer_id);
   const vehicle = data.vehicles.find((v) => v.id === order.vehicle_id);
   const statusOptions = [
-    ["quote", "Orçamento", "Voltar o atendimento para orçamento."],
+    ["quote", "Orçamento", "Voltar a OS para o status Orçamento."],
     ["open", "OS aberta", "Deixar a OS aberta, antes do início da execução."],
     ["working", "Em execução", "Retomar ou colocar a OS em execução."],
     ["ready", "Pronta para entrega", "Marcar a OS como pronta para entrega."],
@@ -32,7 +32,7 @@ export function OrderView() {
     ["cancelled", "Cancelada", "Cancelar o atendimento mantendo o histórico."],
   ] as const;
   const next: Record<string, [string, string]> = {
-    quote: ["open", "Aprovar orçamento"],
+    quote: ["open", "Aprovar OS"],
     open: ["working", "Iniciar execução"],
     working: ["ready", "Marcar como pronta"],
     ready: ["completed", "Finalizar OS e receber"],
@@ -40,7 +40,7 @@ export function OrderView() {
   const action = next[order.status];
   async function transition() {
     if (order && !["quote", "cancelled"].includes(confirm) && (!order.customer_id || !order.vehicle_id)) {
-      notify("Informe o cliente e o veículo no atendimento e depois aprove o orçamento.");
+      notify("Informe o cliente e o veículo no atendimento e depois aprove a OS.");
       setConfirm("");
       navigate(`/ordens/${id}/editar`);
       return;
@@ -82,7 +82,7 @@ export function OrderView() {
       />
       <div className="no-print">
       <PageHeading
-        eyebrow={order.kind === "quote" ? "ORÇAMENTO" : "ORDEM DE SERVIÇO"}
+        eyebrow="ORDEM DE SERVIÇO"
         title={`#${order.number} · ${order.plate || "Sem placa"}`}
         description={`${order.customer_name} · ${[order.brand, order.model].filter(Boolean).join(" ") || "Veículo não informado"}`}
         actions={
@@ -206,7 +206,7 @@ export function OrderView() {
       <section className="panel work-order-section">
         <div className="section-heading">
           <h2>Observações para a equipe</h2>
-          {order.kind === "order" && editable && (
+          {order.status !== "quote" && editable && (
             <button
               className="text-button no-print"
               onClick={() => {
@@ -227,7 +227,7 @@ export function OrderView() {
           className="text-button danger"
           onClick={() => setConfirm("cancelled")}
         >
-          Cancelar {order.kind === "quote" ? "orçamento" : "OS"}
+          Cancelar OS
         </button>
       )}
       </div>
@@ -266,7 +266,7 @@ export function OrderView() {
               : confirm === "completed"
                 ? "As peças serão baixadas do estoque e você seguirá para o recebimento."
                 : confirm === "quote"
-                  ? "O atendimento voltará a ser orçamento e poderá ser editado normalmente."
+                  ? "A OS voltará ao status Orçamento e poderá ser editada normalmente."
                   : confirm === "cancelled"
                     ? "O registro será preservado no histórico como cancelado."
                     : "Confirme a nova situação do atendimento."

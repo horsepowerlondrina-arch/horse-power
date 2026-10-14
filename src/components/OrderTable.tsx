@@ -11,7 +11,7 @@ export function OrderTable({ orders }: { orders: Order[] }) {
     return (
       <Empty
         title="Nenhum atendimento por aqui"
-        description="Crie um orçamento ou OS, ou ajuste os filtros para começar."
+        description="Crie uma OS ou ajuste os filtros para começar."
       />
     );
   return (

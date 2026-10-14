@@ -963,7 +963,6 @@ export function createApp(db: DB) {
     const record = String(req.params.id);
     const order = await scoped(db, "orders", ctx.tenantId, record);
     if (
-      order.kind !== "order" ||
       !["open", "working", "ready"].includes(order.status)
     )
       throw new Error("As observações só podem mudar em uma OS em andamento.");

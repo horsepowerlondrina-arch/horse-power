@@ -49,12 +49,12 @@ export function Dashboard() {
   const recent = data.orders
     .filter((o) =>
       tab === "active"
-        ? o.kind === "order" &&
+        ? o.status !== "quote" &&
           ["open", "working", "ready", "awaiting_payment"].includes(
             displayStatus(o),
           )
         : tab === "quotes"
-          ? o.kind === "quote"
+          ? o.status === "quote"
           : displayStatus(o) === "completed",
     )
     .slice(0, 5);
@@ -285,7 +285,7 @@ export function Dashboard() {
           <div className="tabs compact">
             {[
               ["active", "Em andamento e a receber"],
-              ["quotes", "Orçamentos"],
+              ["quotes", "Em orçamento"],
               ["completed", "Finalizadas"],
             ].map(([key, label]) => (
               <button
@@ -299,7 +299,7 @@ export function Dashboard() {
                     {
                       data.orders.filter(
                         (o) =>
-                          o.kind === "order" &&
+                          o.status !== "quote" &&
                           [
                             "open",
                             "working",

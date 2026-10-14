@@ -52,7 +52,7 @@ export function selectReportOrders(
     (!filters.to || day <= filters.to);
   return orders.filter((o) => {
     if (
-      (!includeQuotes && o.kind !== "order") ||
+      (!includeQuotes && o.status === "quote") ||
       (filters.statuses.length && !filters.statuses.includes(displayStatus(o)))
     )
       return false;
