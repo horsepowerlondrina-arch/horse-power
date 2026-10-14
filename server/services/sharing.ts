@@ -68,7 +68,7 @@ export async function readShare(db: DB, token: string) {
     number: o.number,
     kind: o.kind,
     status: o.status,
-    customer: (c?.name || o.guest_name || "Cliente").split(" ")[0],
+    customer: (c?.name || o.guest_name || "Cliente"),
     vehicle: v ? `${v.brand} ${v.model}` : o.guest_vehicle,
     plate: v?.plate || o.guest_plate,
     entered_on: o.entered_on,
