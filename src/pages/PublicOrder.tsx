@@ -16,7 +16,7 @@ export function PublicOrder() {
    !data ? <p role="status">Carregando atendimento…</p> : <>
     <div className="customer-document-actions no-print"><button className="button" onClick={()=>window.print()}>Imprimir / salvar PDF</button></div>
     <OrderPrint publicView tenant={data.shop} customer={{id:"public",name:data.customer}} order={{...data,id:"public",guest_vehicle:data.vehicle,guest_plate:data.plate,items:data.items.map((i:Entity,n:number)=>({...i,id:String(n)}))}} />
-    <p className="customer-document-terms">Condições de pagamento e eventuais acréscimos de cartão são combinados com a oficina.</p>
+    {!data.payment_summary && <p className="customer-document-terms">Condições de pagamento e eventuais acréscimos de cartão são combinados com a oficina.</p>}
    </>}
  </main>;
 }

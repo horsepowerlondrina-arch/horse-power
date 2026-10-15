@@ -1,5 +1,6 @@
 import { ShareOrder } from "../components/ShareOrder";
 import { OrderPrint } from "../components/OrderPrint";
+import { customerPayments } from "../../shared/customerPayments";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../lib/context";
@@ -75,7 +76,7 @@ export function OrderView() {
         ← Voltar à lista
       </button>
       <OrderPrint
-        order={order}
+        order={{...order,payment_summary:customerPayments(order.status,data.receivables.find(r=>r.order_id===order.id),data.installments)}}
         tenant={session.tenant}
         customer={customer}
         vehicle={vehicle}

@@ -160,6 +160,14 @@ export function OrderPrint({
         </section>
       )}
 
+      {order.payment_summary && <section className="hp-print-observations">
+        <h2>PAGAMENTOS REALIZADOS</h2>
+        <p><strong>{order.payment_summary.status === "paid" ? "PAGO · OS QUITADA" : "PAGAMENTO PARCIAL"}</strong></p>
+        <table><thead><tr><th>Forma de pagamento</th><th>Data do pagamento</th><th>Valor pago</th></tr></thead><tbody>
+          {order.payment_summary.payments.map((p:Entity,n:number)=><tr key={n}><td>{p.method}{p.method === "Cartão de crédito" && p.installments > 1 ? ` · ${p.installments} parcelas` : ""}</td><td>{fullDate(p.date)}</td><td>{money(p.amount)}</td></tr>)}
+        </tbody></table>
+        <p>Total cobrado: <strong>{money(order.payment_summary.total)}</strong> · Total pago: <strong>{money(order.payment_summary.paid)}</strong> · Saldo a pagar: <strong>{money(order.payment_summary.balance)}</strong></p>
+      </section>}
       <footer className="hp-print-footer">
         {!publicView && (
 <div className="hp-print-dates">
@@ -181,7 +189,7 @@ export function OrderPrint({
           <div><span>TOTAL PRODUTOS:</span><strong>{money(productTotal)}</strong></div>
           <div><span>(-) DESCONTO:</span><strong>{money(discount)}</strong></div>
           <div className="hp-print-grand-total">
-            <span>TOTAL A PAGAR:</span><strong>{money(total)}</strong>
+            <span>{order.payment_summary ? "TOTAL DA OS:" : "TOTAL A PAGAR:"}</span><strong>{money(total)}</strong>
           </div>
         </div>
       </footer>

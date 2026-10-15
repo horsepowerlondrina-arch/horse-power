@@ -3,6 +3,7 @@ import { type DB, transaction } from "../db/database.js";
 import { digest, type Context } from "../auth/session.js";
 import { requireAdmin } from "./payments.js";
 import { scoped, audit } from "./workshop.js";
+import { customerPayments } from "../../shared/customerPayments.js";
 export async function createShare(db: DB, ctx: Context, record: string) {
   requireAdmin(ctx);
   return await transaction(db, async () => {
@@ -63,7 +64,10 @@ export async function readShare(db: DB, token: string) {
   const shop = await db
     .prepare("SELECT name,legal_name,document,phone,email,address,city,state,document_logo FROM tenants WHERE id=?")
     .get(s.tenant_id);
+  const receipt = o.status === "completed" ? await db.prepare("SELECT id,status,amount,plan_configured,gross_total,method,paid_at,card_sale_on FROM receivables WHERE tenant_id=? AND order_id=?").get(s.tenant_id,s.order_id) : undefined;
+  const payments = receipt ? await db.prepare("SELECT receivable_id,method,gross,status,paid_at FROM payment_installments WHERE tenant_id=? AND receivable_id=? ORDER BY sequence").all(s.tenant_id,receipt.id) : [];
   return {
+    payment_summary: customerPayments(o.status,receipt,payments),
     shop,
     number: o.number,
     kind: "order",
