@@ -698,7 +698,7 @@ function Editor({ order, quote }: { order?: Entity; quote: boolean }) {
                               {data.vehicles
                                 .filter(
                                   (v) =>
-                                    v.customer_id === form.customer_id &&
+                                    (v.customer_id === form.customer_id || (order && order.customer_id === form.customer_id && v.id === order.vehicle_id)) &&
                                     (v.active || v.id === form.vehicle_id),
                                 )
                                 .map((v) => (

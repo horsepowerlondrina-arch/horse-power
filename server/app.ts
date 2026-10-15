@@ -1081,18 +1081,8 @@ export function createApp(db: DB) {
             input.customer_id,
           );
           if (!customer.active) throw new Error("Cliente inativo.");
-          if (
-            old &&
-            old.customer_id !== input.customer_id &&
-            (await db
-              .prepare(
-                "SELECT 1 FROM orders WHERE tenant_id=? AND vehicle_id=?",
-              )
-              .get(ctx.tenantId, record!))
-          )
-            throw new Error(
-              "Veículos com histórico não podem trocar de proprietário nesta fase.",
-            );
+          if (old && old.customer_id !== input.customer_id)
+            await audit(db, ctx, `vehicles.owner_changed:${old.customer_id}:${input.customer_id}`, record!);
         }
         if (table === "catalog") {
           if (input.kind === "product") {

@@ -15,6 +15,10 @@ import {
   requireAdmin,
 } from "./payments.js";
 export const id = () => randomUUID();
+async function hasOwnerTransfer(db: DB, tenant: string, vehicle: string, customer: string) {
+  const transfers = await db.prepare("SELECT action FROM audit_events WHERE tenant_id=? AND entity_id=? AND action LIKE 'vehicles.owner_changed:%'").all(tenant,vehicle);
+  return transfers.some(row => String(row.action).startsWith(`vehicles.owner_changed:${customer}:`));
+}
 export type Row = Record<string, any>;
 export async function scoped(
   db: DB,
@@ -213,7 +217,7 @@ export async function saveOrder(
       : null;
     if ((customer && !customer.active) || (vehicle && !vehicle.active))
       throw new Error("Escolha cliente e veículo ativos.");
-    if (vehicle && vehicle.customer_id !== customerId)
+    if (vehicle && vehicle.customer_id !== customerId && !(old && old.customer_id === customerId && old.vehicle_id === vehicleId && await hasOwnerTransfer(db,ctx.tenantId,vehicle.id,String(customerId))))
       throw new Error("O veículo não pertence ao cliente selecionado.");
     if (input.due_on < input.entered_on)
       throw new Error("A previsão não pode ser anterior à entrada.");
@@ -456,7 +460,7 @@ export async function transitionOrder(
       if (
         !customer.active ||
         !vehicle.active ||
-        vehicle.customer_id !== customer.id
+        (vehicle.customer_id !== customer.id && !await hasOwnerTransfer(db,ctx.tenantId,vehicle.id,customer.id))
       )
         throw new Error(
           "Confira o cliente e o veículo antes de alterar a situação.",
