@@ -1,5 +1,6 @@
 import { nextBankingDay } from "../../shared/bankingDays";
 import { NumericInput } from "../components/NumericInput";
+import { MixedPaymentPlan } from "../components/MixedPaymentPlan";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../lib/context";
@@ -18,7 +19,9 @@ export function Payment() {
   const { id } = useParams();
   const { data, refresh, notify } = useApp();
   const navigate = useNavigate();
-  const r = data.receivables.find((r) => r.order_id === id);
+  const [editingPlan, setEditingPlan] = useState(false);
+  const original = data.receivables.find((r) => r.order_id === id);
+  const r = original && editingPlan ? {...original,plan_configured:0} : original;
   const [form, setForm] = useState({
     method: "Pix",
     installments: 1,
@@ -29,13 +32,14 @@ export function Payment() {
     pass_card_fee: false,
   });
   const [accountId, setAccountId] = useState("");
+  const [mixed, setMixed] = useState(false);
   const cashAccounts = (data.cash_accounts || []).filter((a) => a.active);
   const [preview, setPreview] = useState<Entity | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [confirm, setConfirm] = useState<Entity | null>(null);
   useEffect(() => {
-    if (!r || r.plan_configured) return;
+    if (!r || r.plan_configured || mixed) return;
     let current = true;
     setPreview(null);
     const timer = setTimeout(() => {
@@ -54,7 +58,7 @@ export function Payment() {
       current = false;
       clearTimeout(timer);
     };
-  }, [r?.id, r?.plan_configured, form]);
+  }, [r?.id, r?.plan_configured, form, mixed, editingPlan]);
   if (!r)
     return (
       <Empty
@@ -70,10 +74,10 @@ export function Payment() {
   const parts = data.installments
     .filter((p) => p.receivable_id === r.id)
     .sort((a, b) => a.sequence - b.sequence);
-  const credit = r.plan_configured ? r.method === "Cartão de crédito" : form.method === "Cartão de crédito";
+  const credit = r.plan_configured ? parts.some(p=>p.method==="Cartão de crédito") : form.method === "Cartão de crédito";
   const saleOn = r.card_sale_on || form.sale_on;
   const settlementOn = nextBankingDay(saleOn || today());
-  const openParts = parts.filter((p) => p.status === "open");
+  const openParts = parts.filter((p) => p.status === "open" && p.method === "Cartão de crédito");
   const creditTotal = openParts.reduce((v,p) => ({gross:v.gross+p.gross,fee:v.fee+p.fee,net:v.net+p.net}),{gross:0,fee:0,net:0});
   const plan = r.plan_configured
     ? {
@@ -119,7 +123,11 @@ export function Payment() {
           {error}
         </div>
       )}
-      {!r.plan_configured && (
+      {!r.plan_configured && <label className="checkbox-label"><input type="checkbox" checked={mixed} onChange={e=>{setMixed(e.target.checked);setError('');}}/>Dividir entre formas de pagamento</label>}
+      {!!original?.plan_configured && !parts.some(p=>p.status==='paid') && !editingPlan && <button className="button" onClick={()=>{setMixed(true);setEditingPlan(true);}}>Alterar condições de pagamento</button>}
+      {editingPlan && <button className="button" onClick={()=>{setEditingPlan(false);setError('');}}>Cancelar alteração das condições</button>}
+      {!r.plan_configured && mixed && <MixedPaymentPlan receivable={r} onSaved={()=>setEditingPlan(false)} />}
+      {!r.plan_configured && !mixed && (
         <section className="panel work-order-section">
           <h2>Condições de pagamento</h2>
           {card && (
@@ -222,18 +230,18 @@ export function Payment() {
           </p>
         </section>
       )}
-      {plan && (
+      {plan && (!mixed || !!r.plan_configured) && (
         <section className="panel work-order-section">
           <h2>Resumo do recebimento</h2>
           <div className="payment-summary">
             {[
               ["Valor da OS", plan.base],
-              ["Juros do cliente", plan.interest],
-              ["Repasse do cartão", plan.surcharge || 0],
+              [r.method === "Misto" ? "Juros e repasse ao cliente" : "Juros do cliente", r.method === "Misto" ? r.gross_total-r.amount : plan.interest],
+              ["Repasse do cartão", r.method === "Misto" ? 0 : plan.surcharge || 0],
               ["Total do cliente", plan.gross],
               ["Taxa da oficina", plan.fee],
               ["Líquido da oficina", plan.net],
-            ].map(([label, value]) => (
+            ].filter(([label]) => r.method !== "Misto" || label !== "Repasse do cartão").map(([label, value]) => (
               <div key={String(label)}>
                 <span>{label}</span>
                 <strong>{money(Number(value))}</strong>
@@ -242,7 +250,7 @@ export function Payment() {
           </div>
         </section>
       )}
-      <section className="panel work-order-section">
+      {(!mixed || !!r.plan_configured) && <section className="panel work-order-section">
         <h2>
           {r.status === "paid"
             ? "Recebimento concluído"
@@ -259,11 +267,12 @@ export function Payment() {
             Receber total do cartão · {money(creditTotal.net)}
           </button>
         )}
-        {credit && r.status==="paid" && <p>{(r.paid_at || "").slice(0,10)>today() ? "Crédito agendado para " : "Crédito registrado em "}{dateLabel(r.paid_at)}.</p>}
+        {credit && r.method!=="Misto" && r.status==="paid" && <p>{(r.paid_at || "").slice(0,10)>today() ? "Crédito agendado para " : "Crédito registrado em "}{dateLabel(r.paid_at)}.</p>}
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
+                <th>Forma</th>
                 <th>Parcela</th>
                 <th>Vencimento</th>
                 <th>Cliente paga</th>
@@ -276,10 +285,11 @@ export function Payment() {
               {(r.plan_configured ? parts : preview?.installments || []).map(
                 (p: Entity) => (
                   <tr key={p.sequence}>
+                    <td>{p.method || form.method}</td>
                     <td>
-                      {p.sequence}/
+                      {r.plan_configured ? parts.filter(i=>i.method===p.method).indexOf(p)+1 : p.sequence}/
                       {r.plan_configured
-                        ? r.installment_count
+                        ? parts.filter(i=>i.method===p.method).length
                         : form.installments}
                     </td>
                     <td>{dateLabel(p.due_on)}</td>
@@ -289,8 +299,8 @@ export function Payment() {
                     <td>
                       {r.plan_configured ? (
                         p.status === "paid" ? (
-                          <span className="badge paid">{credit && (p.paid_at || "").slice(0,10)>today() ? "Agendada" : "Recebida"}</span>
-                        ) : credit ? (
+                          <span className="badge paid">{p.method==="Cartão de crédito" && (p.paid_at || "").slice(0,10)>today() ? "Agendada" : "Recebida"}</span>
+                        ) : p.method==="Cartão de crédito" ? (
                           <span className="badge">Incluída no total</span>
                         ) : (
                           <button
@@ -298,7 +308,7 @@ export function Payment() {
                             disabled={busy}
                             onClick={() => setConfirm(p)}
                           >
-                            Receber parcela
+                            {parts.filter(i=>i.method===p.method).length===1 ? `Receber ${p.method}` : "Receber parcela"}
                           </button>
                         )
                       ) : (
@@ -321,6 +331,7 @@ export function Payment() {
               try {
                 await send(`/receivables/${r.id}/plan`, form);
                 await refresh();
+                setEditingPlan(false);
                 notify(
                   credit ? "Condições salvas. Confirme o recebimento total do cartão." : "Condições salvas. Confirme as parcelas conforme receber.",
                 );
@@ -334,10 +345,10 @@ export function Payment() {
             Salvar condições de pagamento
           </button>
         )}
-      </section>
+      </section>}
       {confirm && (
         <Modal
-          title={confirm.is_credit ? "Confirmar recebimento total do cartão?" : `Confirmar recebimento da parcela ${confirm.sequence}?`}
+          title={confirm.is_credit ? "Confirmar recebimento total do cartão?" : `Confirmar recebimento de ${confirm.method}?`}
           description={`Cliente paga ${money(confirm.gross)}. O caixa receberá ${money(confirm.net)}, após ${money(confirm.fee)} de taxa.${confirm.is_credit ? " Crédito em " + dateLabel(settlementOn) + "." : ""}`}
           onClose={() => !busy && setConfirm(null)}
         >

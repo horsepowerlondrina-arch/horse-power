@@ -15,6 +15,26 @@ export type PaymentInput = {
   pass_card_fee?: boolean;
   sale_on?: string;
 };
+export type MixedPaymentInput = { payments: (PaymentInput & {amount:number})[] };
+export function calculatePaymentPlan(base:number,input:PaymentInput|MixedPaymentInput) {
+  const payments='payments' in input ? input.payments : [{...input,amount:base}];
+  if(!payments.length || payments.length>paymentMethods.length || payments.reduce((sum,p)=>sum+p.amount,0)!==base)
+    throw new Error('A soma das formas de pagamento deve ser igual ao valor da OS.');
+  if(new Set(payments.map(p=>p.method)).size!==payments.length)
+    throw new Error('Informe cada forma de pagamento uma vez e ajuste seu valor.');
+  const plans=payments.map(payment=>({...calculatePlan(payment.amount,payment),method:payment.method,input:payment}));
+  let sequence=0;
+  return {
+    base,
+    interest:plans.reduce((s,p)=>s+p.interest,0),
+    surcharge:plans.reduce((s,p)=>s+p.surcharge,0),
+    gross:plans.reduce((s,p)=>s+p.gross,0),
+    fee:plans.reduce((s,p)=>s+p.fee,0),
+    net:plans.reduce((s,p)=>s+p.net,0),
+    installments:plans.flatMap(p=>p.installments.map(i=>({...i,sequence:++sequence,method:p.method}))),
+    plans,
+  };
+}
 export function addMonthsClamped(date: string, months: number) {
   const [y, m, d] = date.split("-").map(Number);
   const target = new Date(Date.UTC(y, m - 1 + months, 1));

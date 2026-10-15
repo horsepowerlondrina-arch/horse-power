@@ -1,6 +1,6 @@
 import { transaction, type DB } from "../db/database.js";
 import type { Context } from "../auth/session.js";
-import { calculatePlan, type PaymentInput } from "../domain/payments.js";
+import { calculatePaymentPlan, type PaymentInput, type MixedPaymentInput } from "../domain/payments.js";
 import { id, scoped, audit } from "./workshop.js";
 import { cashAccount, cashToday, recordCash } from "./cashControl.js";
 import { nextBankingDay } from "../../shared/bankingDays.js";
@@ -14,7 +14,7 @@ export async function configurePlan(
   db: DB,
   ctx: Context,
   record: string,
-  input: PaymentInput,
+  input: PaymentInput | MixedPaymentInput,
 ) {
   requireAdmin(ctx);
   return await transaction(db, async () => {
@@ -28,9 +28,11 @@ export async function configurePlan(
         .get(ctx.tenantId, record))
     )
       throw new Error("O plano não pode mudar após um recebimento.");
-    const plan = calculatePlan(r.amount, input);
-    const saleOn =
-      input.method === "Cartão de crédito" ? input.sale_on || cashToday() : "";
+    const plan = calculatePaymentPlan(r.amount, input);
+    const credit = plan.plans.find(p=>p.method==='Cartão de crédito');
+    const saleOn = credit ? credit.input.sale_on || cashToday() : '';
+    const method = plan.plans.length>1 ? 'Misto' : plan.plans[0].method;
+    const single = plan.plans[0].input;
     if (saleOn) {
       nextBankingDay(saleOn);
       if (saleOn > cashToday())
@@ -57,21 +59,21 @@ export async function configurePlan(
           part.gross,
           part.fee,
           part.net,
-          input.method,
+          part.method,
         );
     await db
       .prepare(
         "UPDATE receivables SET plan_configured=1,installment_count=?,card_fee_bps=?,interest_bps=?,gross_total=?,fee_total=?,net_total=?,method=?,due_on=?,card_sale_on=? WHERE tenant_id=? AND id=?",
       )
       .run(
-        input.installments,
-        input.card_fee_bps,
-        input.interest_bps,
+        plan.installments.length,
+        plan.plans.length>1 ? 0 : single.card_fee_bps,
+        plan.plans.length>1 ? 0 : single.interest_bps,
         plan.gross,
         plan.fee,
         plan.net,
-        input.method,
-        saleOn ? nextBankingDay(saleOn) : input.first_due_on,
+        method,
+        plan.plans.map(p=>p.method==='Cartão de crédito' ? nextBankingDay(saleOn) : p.input.first_due_on).sort()[0],
         saleOn,
         ctx.tenantId,
         record,
@@ -131,16 +133,20 @@ export async function settleInstallment(
         part.receivable_id,
       );
     if (pending)
+    {
+      const receivable = await scoped(db,"receivables",ctx.tenantId,String(part.receivable_id));
       await db
         .prepare(
-          "UPDATE receivables SET due_on=(SELECT MIN(due_on) FROM payment_installments WHERE tenant_id=? AND receivable_id=? AND status='open') WHERE tenant_id=? AND id=?",
+          "UPDATE receivables SET due_on=(SELECT MIN(CASE WHEN method='Cartão de crédito' THEN ? ELSE due_on END) FROM payment_installments WHERE tenant_id=? AND receivable_id=? AND status='open') WHERE tenant_id=? AND id=?",
         )
         .run(
+          nextBankingDay(String(receivable.card_sale_on || cashToday())),
           ctx.tenantId,
           part.receivable_id,
           ctx.tenantId,
           part.receivable_id,
         );
+    }
     const order = await db
       .prepare(
         "SELECT o.number FROM orders o JOIN receivables r ON r.order_id=o.id AND r.tenant_id=o.tenant_id WHERE r.tenant_id=? AND r.id=?",
@@ -172,7 +178,7 @@ export async function settleCredit(
   return transaction(db, async () => {
     const receivable = await scoped(db, "receivables", ctx.tenantId, record);
     if (
-      receivable.method !== "Cartão de crédito" ||
+      !["Cartão de crédito", "Misto"].includes(receivable.method) ||
       !receivable.plan_configured
     )
       throw new Error(
@@ -180,7 +186,7 @@ export async function settleCredit(
       );
     const parts = await db
       .prepare(
-        "SELECT * FROM payment_installments WHERE tenant_id=? AND receivable_id=? AND status='open' ORDER BY sequence",
+        "SELECT * FROM payment_installments WHERE tenant_id=? AND receivable_id=? AND method='Cartão de crédito' AND status='open' ORDER BY sequence",
       )
       .all(ctx.tenantId, record);
     if (!parts.length || receivable.status === "paid")
@@ -201,7 +207,7 @@ export async function settleCredit(
     const paidAt = day + "T12:00:00-03:00";
     await db
       .prepare(
-        "UPDATE payment_installments SET status='paid',paid_at=? WHERE tenant_id=? AND receivable_id=? AND status='open'",
+        "UPDATE payment_installments SET status='paid',paid_at=? WHERE tenant_id=? AND receivable_id=? AND method='Cartão de crédito' AND status='open'",
       )
       .run(paidAt, ctx.tenantId, record);
     // One settlement represents the remaining card total; the installments remain visible.
@@ -218,14 +224,15 @@ export async function settleCredit(
         totals.net,
         totals.gross,
         totals.fee,
-        receivable.method,
+        "Cartão de crédito",
         paidAt,
       );
+    const pending = await db.prepare("SELECT MIN(due_on) due_on,COUNT(*) n FROM payment_installments WHERE tenant_id=? AND receivable_id=? AND status='open'").get(ctx.tenantId,record);
     await db
       .prepare(
-        "UPDATE receivables SET status='paid',paid_at=?,due_on=?,card_sale_on=? WHERE tenant_id=? AND id=?",
+        "UPDATE receivables SET status=?,paid_at=?,due_on=?,card_sale_on=? WHERE tenant_id=? AND id=?",
       )
-      .run(paidAt, day, sale, ctx.tenantId, record);
+      .run(pending!.n ? 'open' : 'paid', pending!.n ? null : paidAt, pending!.n ? pending!.due_on : day, sale, ctx.tenantId, record);
     const order = await db
       .prepare("SELECT number FROM orders WHERE tenant_id=? AND id=?")
       .get(ctx.tenantId, receivable.order_id);
@@ -240,7 +247,7 @@ export async function settleCredit(
         " · cartão de crédito (" +
         parts.length +
         " parcelas)",
-      method: receivable.method,
+      method: "Cartão de crédito",
       origin: "receipt",
       source_id: first,
     });

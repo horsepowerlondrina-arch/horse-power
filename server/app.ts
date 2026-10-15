@@ -66,7 +66,7 @@ import { requireAdmin } from "./services/payments.js";
 import { previewStockInvoice, importStockInvoice } from "./services/stockInvoices.js";
 import { listSuppliers, supplierDetails, saveSupplier } from "./services/suppliers.js";
 import { getWorkshopProfile, saveWorkshopProfile } from "./services/workshopProfile.js";
-import { calculatePlan, paymentMethods } from "./domain/payments.js";
+import { calculatePaymentPlan, paymentMethods } from "./domain/payments.js";
 import { lookupVehicle, providerToken } from "./services/vehicleLookup.js";
 const text = z.string().trim().max(500).default("");
 const name = z
@@ -173,6 +173,7 @@ const paymentSchema = z.object({
   first_due_on: date,
   sale_on: date.optional(),
 });
+const receiptPlanSchema = z.union([paymentSchema,z.object({payments:z.array(paymentSchema.extend({amount:integer.refine(v=>v>0,"Informe o valor desta forma de pagamento.")})).min(1).max(6)})]);
 export function createApp(db: DB) {
   const app = express();
   app.disable("x-powered-by");
@@ -1005,7 +1006,7 @@ export function createApp(db: DB) {
       res.locals.context.tenantId,
       String(req.params.id),
     );
-    res.json(calculatePlan(r.amount, paymentSchema.parse(req.body)));
+    res.json(calculatePaymentPlan(r.amount, receiptPlanSchema.parse(req.body)));
   });
   app.post("/api/receivables/:id/plan", async (req, res) =>
     res.json(
@@ -1013,7 +1014,7 @@ export function createApp(db: DB) {
         db,
         res.locals.context,
         String(req.params.id),
-        paymentSchema.parse(req.body),
+        receiptPlanSchema.parse(req.body),
       ),
     ),
   );
