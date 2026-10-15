@@ -18,13 +18,15 @@ export function ShareOrder({ order }: { order: Order }) {
     [template, setTemplate] = useState(
       order.status === "quote"
         ? "quote"
-        : order.status === "completed" || order.status === "ready"
-          ? "ready"
-          : "update",
+        : order.status === "completed"
+          ? "completed"
+          : order.status === "ready"
+            ? "ready"
+            : "update",
     ),
     [message, setMessage] = useState("");
   const text = (link: string, type: string) =>
-    `Olá${order.customer_name && order.customer_name !== "Cliente não informado" ? ", " + order.customer_name.split(" ")[0] : ""}! Aqui é da ${session.tenant.name}.\n\n${type === "quote" ? `Sua OS #${order.number} está em orçamento. Total: ${money(order.total)}.` : type === "ready" ? `O serviço do seu veículo ${order.plate} foi concluído. Entre em contato para combinar a retirada.` : `Confira a atualização do atendimento #${order.number} do seu veículo ${order.plate}.`}\n\nVeja os serviços, peças e valores: ${link}\n\nQualquer dúvida, estamos à disposição!`;
+    `Olá${order.customer_name && order.customer_name !== "Cliente não informado" ? ", " + order.customer_name.split(" ")[0] : ""}! Aqui é da ${session.tenant.name}.\n\n${type === "quote" ? `Sua OS #${order.number} está em orçamento. Total: ${money(order.total)}.` : type === "completed" ? `Sua OS #${order.number}${order.plate ? `, referente ao veículo ${order.plate},` : ""} foi finalizada. Agradecemos pela confiança!` : type === "ready" ? `O serviço do seu veículo ${order.plate} foi concluído. Entre em contato para combinar a retirada.` : `Confira a atualização do atendimento #${order.number} do seu veículo ${order.plate}.`}\n\n${type === "completed" ? "Confira os detalhes da OS e os pagamentos registrados" : "Veja os serviços, peças e valores"}: ${link}\n\nQualquer dúvida, estamos à disposição!`;
   async function prepare() {
     setOpen(true);
     setBusy(true);
@@ -77,6 +79,7 @@ export function ShareOrder({ order }: { order: Order }) {
                   >
                     <option value="quote">Orçamento pronto</option>
                     <option value="ready">Serviço concluído</option>
+                    <option value="completed">OS finalizada</option>
                     <option value="update">Atualização da OS</option>
                   </select>
                 </Field>
