@@ -39,6 +39,20 @@ function xml(
   return `<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><NFe><infNFe Id="NFe${key}" versao="4.00"><ide><mod>55</mod><tpAmb>1</tpAmb><tpNF>1</tpNF><nNF>${number}</nNF><dhEmi>2026-10-11T10:00:00-03:00</dhEmi></ide><emit><CNPJ>12345678000195</CNPJ><xNome>Fornecedor &amp; Cia</xNome></emit><dest><CNPJ>98765432000100</CNPJ></dest><det nItem="1"><prod><cProd>${code}</cProd><cEAN>${gtin}</cEAN><xProd>Filtro de óleo</xProd><uCom>UN</uCom><qCom>${quantity}</qCom><vProd>40.00</vProd><vDesc>2.00</vDesc><vFrete>4.00</vFrete><vSeg>1.00</vSeg><vOutro>1.00</vOutro></prod><imposto><ICMS><ICMS10><vICMS>5.00</vICMS><vICMSST>2.00</vICMSST><vFCPST>1.00</vFCPST></ICMS10></ICMS><IPI><IPITrib><vIPI>3.00</vIPI></IPITrib></IPI></imposto></det></infNFe></NFe><protNFe><infProt><tpAmb>1</tpAmb><chNFe>${key}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>`;
 }
 const choice = { line: "1", catalog_id: "p", quantity: 2 };
+test("unique matching descriptions are preselected as editable suggestions without writing stock or supplier mappings",async()=>{
+ const db=fixture();try{
+  db.prepare("UPDATE catalog SET active=0 WHERE id='q'").run();
+  const preview=await previewStockInvoice(db,ctx,xml());
+  assert.equal(preview.items[0].catalog_id,'p');assert.equal(preview.items[0].match,'suggested');
+  assert.equal(db.prepare("SELECT stock FROM catalog WHERE id='p'").get()!.stock,5);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM stock_invoice_products').get()!.n,0);
+  db.prepare("UPDATE catalog SET active=1 WHERE id='q'").run();
+  const ambiguous=await previewStockInvoice(db,ctx,xml());assert.equal(ambiguous.items[0].catalog_id,'');assert.equal(ambiguous.items[0].match,'review');
+  await importStockInvoice(db,ctx,xml(),[{...choice,catalog_id:'q'}]);
+  assert.equal(db.prepare("SELECT stock FROM catalog WHERE id='p'").get()!.stock,5);
+  assert.equal(db.prepare("SELECT stock FROM catalog WHERE id='q'").get()!.stock,2);
+ }finally{db.close();}
+});
 test("authorized XML preserves text, leading-zero codes, quantities and landed costs without double ICMS", () => {
   const result = parseStockInvoice(xml(1, "2.0000", "00001"));
   assert.equal(result.document, "12345678000195");

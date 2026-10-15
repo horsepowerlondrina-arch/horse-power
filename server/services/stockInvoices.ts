@@ -93,7 +93,7 @@ export async function previewStockInvoice(db: DB, ctx: Context, xml: string) {
             .map((p) => p.id)
         : [];
     const identifiers = [...new Set([...barcodes, ...references])];
-    const matched =
+    let matched =
       exact?.catalog_id || (identifiers.length === 1 ? identifiers[0] : "");
     const candidates = catalog
       .filter(
@@ -108,6 +108,13 @@ export async function previewStockInvoice(db: DB, ctx: Context, xml: string) {
               identityKey(identity.manufacturer_code)),
       )
       .map((p) => p.id);
+    const candidate = !matched && identifiers.length === 0 && candidates.length === 1
+      ? catalog.find(p=>p.id===candidates[0]) : undefined;
+    const suggested = !!candidate && identityKey(candidate.name) === identityKey(identity.name)
+      && !(identity.brand && candidate.brand && identityKey(identity.brand)!==identityKey(candidate.brand))
+      && !(identity.manufacturer_code && candidate.manufacturer_code && identityKey(identity.manufacturer_code)!==identityKey(candidate.manufacturer_code))
+      && !(identity.application && candidate.application && identityKey(identity.application)!==identityKey(candidate.application));
+    if (suggested) matched = String(candidate!.id);
     const amount = item.quantity * (exact?.quantity_factor || 1);
     const quantity =
       Math.abs(amount - Math.round(amount)) < 0.000001 && amount <= 1000000
@@ -125,6 +132,8 @@ export async function previewStockInvoice(db: DB, ctx: Context, xml: string) {
       price: salePrice(cost, pricing),
       match: exact
         ? "supplier"
+        : suggested
+          ? "suggested"
         : matched
           ? barcodes.includes(matched)
             ? "barcode"

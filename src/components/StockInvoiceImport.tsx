@@ -256,6 +256,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
                           somente se for uma peça diferente.
                         </p>
                       )}
+                      {item.match === "suggested" && <p><small>Produto selecionado pela correspondência única da descrição. Confira marca, referência e aplicação; você pode trocar o produto antes de confirmar.</small></p>}
                       {item.match === "supplier" && (
                         <p>
                           <small>
