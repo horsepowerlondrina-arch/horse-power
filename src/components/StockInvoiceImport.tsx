@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { invoiceReviewIssues } from "../../shared/invoiceReview";
 import { SupplierFields, type SupplierDraft } from "./SupplierFields";
 import { useApp } from "../lib/context";
 import { send } from "../lib/api";
@@ -55,6 +56,9 @@ type Choice = {
 };
 export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
   const { data, refresh, notify } = useApp();
+  const supplierSection = useRef<HTMLDetailsElement>(null);
+  const itemSections = useRef<(HTMLElement|null)[]>([]);
+  const [showIssues, setShowIssues] = useState(false);
   const [xml, setXml] = useState(""),
     [preview, setPreview] = useState<Preview | null>(null),
     [choices, setChoices] = useState<Choice[]>([]);
@@ -74,6 +78,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
     if (!file) return;
     setError("");
     setPreview(null);
+    setShowIssues(false);
     setSupplier(null);
     setChoices([]);
     setXml("");
@@ -119,25 +124,17 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
       setBusy(false);
     }
   };
-  const valid =
-    !!supplier?.name.trim() &&
-    choices.length > 0 &&
-    choices.every(
-      (c) =>
-        c.mode !== "review" &&
-        Number.isInteger(c.quantity) &&
-        c.quantity > 0 &&
-        c.quantity <= 1000000 &&
-        (c.mode === "existing"
-          ? !!c.catalog_id
-          : !!c.name.trim() &&
-            Number.isInteger(c.cost) &&
-            c.cost >= 0 &&
-            Number.isInteger(c.price) &&
-            c.price >= 0),
-    );
+  const issues = invoiceReviewIssues(supplier?.name || "", choices);
+  const pendingItems = new Set(issues.filter(i=>i.index!==null).map(i=>i.index)).size;
+  const focusIssue = (index:number|null) => {
+    const target = index===null ? supplierSection.current : itemSections.current[index];
+    if(index===null && supplierSection.current) supplierSection.current.open=true;
+    target?.scrollIntoView({block:"center",behavior:"smooth"});
+    target?.querySelector<HTMLElement>('input,select')?.focus({preventScroll:true});
+  };
   const confirm = async () => {
-    if (!valid || busy) return;
+    if (busy || !preview || preview.already_imported) return;
+    if (issues.length) {setShowIssues(true);focusIssue(issues[0].index);return;}
     setBusy(true);
     setError("");
     try {
@@ -204,7 +201,9 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
                   O código do fornecedor será vinculado ao produto escolhido
                   para as próximas notas.
                 </p>
-                {supplier && <details>
+                {pendingItems>0 && <p role="status">{pendingItems} de {choices.length} produto(s) aguardando conferência. Revise o destino e a quantidade de cada item.</p>}
+                {showIssues && issues.length>0 && <div className="error-box" role="alert"><strong>Confira as pendências antes de registrar a entrada:</strong><ul>{issues.map((issue,n)=><li key={n}><button type="button" className="text-button" onClick={()=>focusIssue(issue.index)}>{issue.index===null ? "Fornecedor" : `Item ${issue.index+1} · ${preview.items[issue.index]?.name}`}: {issue.message}</button></li>)}</ul></div>}
+                {supplier && <details ref={supplierSection}>
                   <summary>{preview.supplier_record.existing ? "Fornecedor cadastrado · conferir ou editar dados" : "Novo fornecedor · conferir dados do XML"}</summary>
                   <p>Os dados serão salvos somente ao confirmar a importação da nota.</p>
                   <SupplierFields value={supplier} onChange={setSupplier} documentReadOnly disabled={busy} />
@@ -222,9 +221,11 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
                     <section
                       className="panel"
                       key={item.line}
+                      ref={element=>{itemSections.current[index]=element;}}
                       style={{ padding: 18, marginBottom: 16 }}
                     >
                       <strong>{item.name}</strong>
+                      {showIssues && issues.filter(issue=>issue.index===index).map((issue,n)=><p className="form-error" key={n}>{issue.message}</p>)}
                       <p>
                         <small>
                           Código do fornecedor: {item.code} · Nota:{" "}
@@ -522,7 +523,7 @@ export function StockInvoiceImport({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           className="button primary"
-          disabled={busy || !valid || !!preview?.already_imported}
+          disabled={busy || !preview || !!preview.already_imported}
           onClick={() => void confirm()}
         >
           Confirmar entrada da nota
