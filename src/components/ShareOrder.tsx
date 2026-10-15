@@ -32,7 +32,9 @@ export function ShareOrder({ order }: { order: Order }) {
     try {
       const s = await send(`/orders/${order.id}/share`, {});
       const base = s.public_origin || window.location.origin;
-      const link = base.replace(/\/$/, "") + s.path;
+      const shareUrl = new URL(s.path, base);
+      shareUrl.searchParams.set("preview", "2");
+      const link = shareUrl.toString();
       setUrl(link);
       setPublicReady(
         !!s.public_origin &&

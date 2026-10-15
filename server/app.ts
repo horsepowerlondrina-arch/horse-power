@@ -1323,6 +1323,7 @@ export function createApp(db: DB) {
     res.status(404).json({ error: "Recurso não encontrado." }),
   );
   app.use(express.static(resolve("dist")));
+  app.get("/p/:token", (_req, res) => res.sendFile(resolve("dist/client.html")));
   app.get("/{*path}", (_req, res) => res.sendFile(resolve("dist/app.html")));
   app.use(
     (

@@ -46,6 +46,10 @@
       "destination": "/privacidade.html"
     },
     {
+      "source": "/p/:token",
+      "destination": "/client.html"
+    },
+    {
       "source": "/((?!api/|assets/|brand/|downloads/|site/|favicon|privacidade\\.html$).*)",
       "destination": "/app.html"
     }
